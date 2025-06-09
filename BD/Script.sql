@@ -75,17 +75,17 @@ CREATE TABLE borders (
 );
 
 -- Passando dados para as novas tabelas
-INSERT INTO country_languages (country_code, language)
+INSERT INTO languages (country_code, language)
 SELECT country_code, unnest(language)
 FROM country_society
 WHERE language IS NOT NULL;
 
-INSERT INTO country_currencies (country_code, currency)
+INSERT INTO currencies (country_code, currency)
 SELECT country_code, unnest(currencies)
 FROM country_society
 WHERE currencies IS NOT NULL;
 
-INSERT INTO country_borders (country_code, border_country_code)
+INSERT INTO borders (country_code, border_country_code)
 SELECT country_code, unnest(borders)
 FROM country_geography
 WHERE borders IS NOT NULL;
