@@ -7,7 +7,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # CONFIGURAÇÃO DO BANCO
-DATABASE_URL = 'postgresql://postgres:1234@localhost:5432/trabalhoBD2'
+DATABASE_URL = 'postgresql://paulo:1234@localhost:5432/trabalhoBD2'
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -52,15 +52,12 @@ class City(Base):
     name = Column(String(100), nullable=False)
     population = Column(BigInteger)
 
-# CRIAR TABELAS (caso ainda não existam)
-Base.metadata.create_all(engine)
 
 # ETAPA 1: Carregar países (RestCountries)
 def load_countries():
     url = 'https://restcountries.com/v3.1/all'
     response = requests.get(url)
     countries = response.json()
-
     for c in countries:
         try:
             name = c['name']['common']
@@ -220,3 +217,4 @@ def load_states_and_cities_with_population(start=0, end=10, pause=3):
             continue
 
 
+load_countries()
