@@ -1,0 +1,96 @@
+/* Reset e estilos base */
+:root {
+  --primary: #1976D2;
+  --secondary: #26A69A;
+  --accent: #FF4081;
+  --error: #FF5252;
+  --info: #2196F3;
+  --success: #4CAF50;
+  --warning: #FFC107;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: #f5f5f5;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Customizações para melhorar a interface do relatório */
+.v-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  transition: box-shadow 0.3s ease;
+}
+
+.v-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.v-card-title {
+  font-weight: 500;
+}
+
+/* Estilizando o conteúdo do relatório */
+.v-data-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Estilizando botões */
+.v-btn {
+  text-transform: none;
+  letter-spacing: 0.5px;
+}
+
+/* Estilizando SQL */
+pre {
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #24292e;
+  border: 1px solid #e1e4e8;
+}
+
+/* Responsividade para telas menores */
+@media (max-width: 960px) {
+  .v-container {
+    padding: 12px;
+  }
+}
+
+/* Estilos de impressão para o relatório */
+@media print {
+  .v-app-bar,
+  .v-footer,
+  .v-btn {
+    display: none !important;
+  }
+  
+  .v-card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+  
+  .v-card-title {
+    background-color: #f5f5f5 !important;
+    color: #333 !important;
+  }
+}
