@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from controller import database_controller
+from BD.aplicacao.backend.controller import consultaController
 
 # Criar a aplicação FastAPI
 app = FastAPI(title="API de Países e Cidades")
@@ -17,7 +17,7 @@ app.add_middleware(
 )
 
 # Adicionar routers
-app.include_router(database_controller.router, prefix="/api/db", tags=["database"])
+app.include_router(consultaController.router, prefix="/api/db", tags=["database"])
 
 # Rota raiz
 @app.get("/")
