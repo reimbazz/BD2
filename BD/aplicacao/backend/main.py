@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from BD.aplicacao.backend.controller import consultaController
+from controller import consultaController
 
 # Criar a aplicação FastAPI
 app = FastAPI(title="API de Países e Cidades")
