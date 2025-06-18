@@ -27,7 +27,10 @@ const showSql = ref<boolean>(false);
 onMounted(async () => {
   try {
     isLoading.value = true;
-    
+    // Buscar as tabelas disponíveis na API
+    const response = await axios.get('http://localhost:8000/api/db/tables');
+    console.log('Tabelas carregadas:', response.data.tables);
+    tables.value = response.data.tables;
     isLoading.value = false;
   } catch (err) {
     console.error('Erro ao carregar tabelas:', err);
