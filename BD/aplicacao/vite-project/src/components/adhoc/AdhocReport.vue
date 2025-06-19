@@ -10,6 +10,7 @@ import ReportViewer from './ReportViewer.vue';
 
 // Estado da aplicação
 const tables = ref<string[]>([]);
+const tablesJoin = ref<Record<string, string[]>>({});
 const selectedTable = ref<string>('');
 const attributes = ref<{ name: string; type: string }[]>([]);
 const selectedAttributes = ref<string[]>([]);
@@ -42,13 +43,13 @@ onMounted(async () => {
 // Carregar atributos quando uma tabela for selecionada
 const loadAttributes = async () => {
   if (!selectedTable.value) return;
-  
+
   try {
     isLoading.value = true;
     selectedAttributes.value = [];
     attributes.value = [];
-    
-    
+
+
     isLoading.value = false;
   } catch (err) {
     console.error('Erro ao carregar atributos:', err);
@@ -56,6 +57,21 @@ const loadAttributes = async () => {
     isLoading.value = false;
   }
 };
+
+const loadTablesJoin = async () => {
+  try {
+    isLoading.value = true;
+    // Buscar as tabelas disponíveis para join na API
+    const response = await axios.get(`http://localhost:8000/api/db/tables/${selectedTable.value}/relations`);
+
+    tablesJoin.value = response.data;
+    isLoading.value = false;
+  } catch (err) {
+    console.error('Erro ao carregar tabelas para join:', err);
+    error.value = 'Erro ao carregar tabelas para join. Tente novamente mais tarde.';
+    isLoading.value = false;
+  }
+}
 
 // Observar mudanças na tabela selecionada
 watch(selectedTable, async (newTable) => {
@@ -66,8 +82,9 @@ watch(selectedTable, async (newTable) => {
     aggregateFunctions.value = [];
     orderByColumns.value = [];
     reportData.value = [];
-    
+
     await loadAttributes();
+    await loadTablesJoin();
   } else {
     attributes.value = [];
     selectedAttributes.value = [];
@@ -80,12 +97,12 @@ const generateReport = async () => {
     error.value = 'Selecione uma tabela e pelo menos um atributo.';
     return;
   }
-  
+
   try {
     isLoading.value = true;
     error.value = '';
-        
-    
+
+
     isLoading.value = false;
   } catch (err) {
     console.error('Erro ao gerar relatório:', err);
@@ -118,86 +135,54 @@ const clearAll = () => {
         <h1 class="text-h4 mb-4">Gerador de Relatórios ADHOC</h1>
       </v-col>
     </v-row>
-    
+
     <v-row>
       <v-col cols="12" md="4">
-        <TableSelector 
-          :tables="tables" 
-          v-model:selectedTable="selectedTable"
-        />
+        <TableSelector :tables="tables" v-model:selectedTable="selectedTable" />
       </v-col>
-      
+
       <v-col cols="12" md="4">
-        <AttributeSelector 
-          :attributes="attributes" 
-          v-model:selectedAttributes="selectedAttributes"
-        />
+        <AttributeSelector :attributes="attributes" v-model:selectedAttributes="selectedAttributes" />
       </v-col>
-      
+
       <v-col cols="12" md="4">
-        <JoinTables 
-          :availableTables="tables.map(t => ({ tableName: t, attributes: [] }))" 
-          :sourceTable="selectedTable"
-          :sourceAttributes="attributes"
-          v-model:joins="joins"
-        />
+        <JoinTables :tablesFiltersJoin="tablesJoin" :sourceTable="selectedTable" :sourceAttributes="attributes"
+          v-model:joins="joins" />
       </v-col>
     </v-row>
-    
+
     <v-row>
       <v-col cols="12" md="6">
-        <GroupBy 
-          :attributes="attributes" 
-          v-model:groupByAttributes="groupByAttributes"
-          v-model:aggregateFunctions="aggregateFunctions"
-        />
+        <GroupBy :attributes="attributes" v-model:groupByAttributes="groupByAttributes"
+          v-model:aggregateFunctions="aggregateFunctions" />
       </v-col>
-      
+
       <v-col cols="12" md="6">
-        <OrderBy 
-          :attributes="attributes" 
-          :groupByAttributes="groupByAttributes"
-          v-model:orderByColumns="orderByColumns"
-        />
+        <OrderBy :attributes="attributes" :groupByAttributes="groupByAttributes"
+          v-model:orderByColumns="orderByColumns" />
       </v-col>
     </v-row>
-    
+
     <v-row>
       <v-col cols="12" class="d-flex justify-center my-4">
-        <v-btn 
-          color="primary" 
-          size="large" 
-          @click="generateReport"
-          :loading="isLoading"
-          :disabled="!selectedTable || selectedAttributes.length === 0"
-        >
+        <v-btn color="primary" size="large" @click="generateReport" :loading="isLoading"
+          :disabled="!selectedTable || selectedAttributes.length === 0">
           <v-icon start>mdi-file-chart</v-icon>
           Gerar Relatório
         </v-btn>
-        
-        <v-btn 
-          color="error" 
-          size="large" 
-          @click="clearAll"
-          class="ml-4"
-        >
+
+        <v-btn color="error" size="large" @click="clearAll" class="ml-4">
           <v-icon start>mdi-refresh</v-icon>
           Limpar Tudo
         </v-btn>
-        
-        <v-btn
-          color="info"
-          size="large"
-          @click="showSql = !showSql"
-          class="ml-4"
-          v-if="sqlQuery"
-        >
+
+        <v-btn color="info" size="large" @click="showSql = !showSql" class="ml-4" v-if="sqlQuery">
           <v-icon start>mdi-database</v-icon>
           {{ showSql ? 'Ocultar SQL' : 'Mostrar SQL' }}
         </v-btn>
       </v-col>
     </v-row>
-    
+
     <v-row v-if="showSql && sqlQuery">
       <v-col cols="12">
         <v-card>
@@ -211,14 +196,10 @@ const clearAll = () => {
         </v-card>
       </v-col>
     </v-row>
-    
+
     <v-row>
       <v-col cols="12">
-        <ReportViewer 
-          :reportData="reportData"
-          :isLoading="isLoading"
-          :error="error"
-        />
+        <ReportViewer :reportData="reportData" :isLoading="isLoading" :error="error" />
       </v-col>
     </v-row>
   </v-container>

@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 
-interface JoinOption {
-  tableName: string;
-  attributes: { name: string; type: string }[];
-}
-
 interface Join {
   targetTable: string;
   sourceAttribute: string;
@@ -16,9 +11,9 @@ interface Join {
 const emit = defineEmits(['update:joins']);
 
 const props = defineProps({
-  availableTables: {
-    type: Array as () => JoinOption[],
-    default: () => []
+  tablesFiltersJoin: {
+    type: Object as () => Record<string, string[]>,
+    default: () => ({})
   },
   sourceTable: {
     type: String,
@@ -49,10 +44,6 @@ const joinTypes = [
   { text: 'Full Join', value: 'FULL JOIN' }
 ];
 
-const getTargetTableAttributes = () => {
-  const targetTable = props.availableTables.find(t => t.tableName === newJoin.value.targetTable);
-  return targetTable ? targetTable.attributes : [];
-};
 
 watch(joins, (newValue) => {
   emit('update:joins', newValue);
@@ -85,19 +76,15 @@ const removeJoin = (index: number) => {
     <v-card-text>
       <v-form @submit.prevent="addJoin">
         <v-row>
-          <v-col cols="12" sm="6">
-            <v-select
-              v-model="newJoin.joinType"
-              :items="joinTypes"
-              label="Tipo de Junção"
-              variant="outlined"
-              density="comfortable"
-            ></v-select>
+          <v-col cols="12" sm="6"> <v-select v-model="newJoin.joinType" :items="joinTypes" item-title="text"
+              item-value="value" label="Tipo de Junção" variant="outlined" density="comfortable"></v-select>
+          </v-col> <v-col cols="12" sm="6"> <v-select v-model="newJoin.targetTable"
+              :items="Object.keys(tablesFiltersJoin.relations || {}).filter(key => key !== sourceTable)"
+              label="Tabela Alvo" variant="outlined" density="comfortable" :disabled="!sourceTable"></v-select>
           </v-col>
           <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.targetTable"
-              :items="availableTables.map(t => t.tableName).filter(t => t !== sourceTable)"
               label="Tabela Alvo"
               variant="outlined"
               density="comfortable"
@@ -117,7 +104,6 @@ const removeJoin = (index: number) => {
           <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.targetAttribute"
-              :items="getTargetTableAttributes().map(a => a.name)"
               label="Atributo da Tabela Alvo"
               variant="outlined"
               density="comfortable"
