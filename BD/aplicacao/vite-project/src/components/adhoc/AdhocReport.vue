@@ -10,7 +10,7 @@ import ReportViewer from './ReportViewer.vue';
 
 // Estado da aplicação
 const tables = ref<string[]>([]);
-const tablesJoin = ref<Record<string, string[]>>({});
+const tablesJoin = ref<string[]>([]);
 const selectedTable = ref<string>('');
 const attributes = ref<{ name: string; type: string }[]>([]);
 const selectedAttributes = ref<string[]>([]);
@@ -64,7 +64,7 @@ const loadTablesJoin = async () => {
     // Buscar as tabelas disponíveis para join na API
     const response = await axios.get(`http://localhost:8000/api/db/tables/${selectedTable.value}/relations`);
 
-    tablesJoin.value = response.data;
+    tablesJoin.value = response.data.relations;
     isLoading.value = false;
   } catch (err) {
     console.error('Erro ao carregar tabelas para join:', err);
