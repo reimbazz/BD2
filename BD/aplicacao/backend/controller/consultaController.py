@@ -13,4 +13,12 @@ async def get_all_tables():
         return {"tables": tables}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao buscar tabelas: {str(e)}")
-    
+
+@router.get("/tables/{table_name}/relations")
+async def get_table_relations(table_name: str):
+    """Retorna as relações de uma tabela específica"""
+    try:
+        relations = consulta_dao.getTableRelations(table_name)
+        return {"relations": relations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar relações da tabela {table_name}: {str(e)}")
