@@ -49,6 +49,11 @@ const loadAttributes = async () => {
     selectedAttributes.value = [];
     attributes.value = [];
 
+    const response = await axios.get(
+      `http://localhost:8000/api/db/tables/${selectedTable.value}/columns`
+    );
+    attributes.value = response.data.columns;
+
     isLoading.value = false;
   } catch (err) {
     console.error("Erro ao carregar atributos:", err);

@@ -22,3 +22,12 @@ async def get_table_relations(table_name: str):
         return {"relations": relations}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao buscar relações da tabela {table_name}: {str(e)}")
+
+@router.get("/tables/{table_name}/columns")
+async def get_table_columns(table_name: str):
+    """Retorna as colunas de uma tabela específica"""
+    try:
+        columns = consulta_dao.getTableColumns(table_name)
+        return{"columns": columns}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar colunas da tabela {table_name}: {str(e)}")

@@ -40,3 +40,16 @@ class ConsultaDAO:
             print(f"Erro ao buscar relações da tabela {table_name}: {e}")
             raise e
 
+    def getTableColumns(self, table_name: str):
+        try:
+            insp = inspect(self.engine)
+            column_data = []
+
+            columns = insp.get_columns(table_name, schema='public')
+            for col in columns:
+                column_data.append({"name": col['name'], "type": str(col['type'])})
+
+            return column_data
+        except Exception as e:
+            print(f"Erro ao buscar atributos da tabela {table_name}: {e}")
+            raise e
