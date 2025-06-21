@@ -40,6 +40,18 @@ onMounted(async () => {
   }
 });
 
+const fetchTableAttributes = async (tableName: string): Promise<{ name: string; type: string }[]> => {
+  try {
+    const response = await axios.get(
+      `http://localhost:8000/api/db/tables/${tableName}/columns`
+    );
+    return response.data.columns;
+  } catch (err) {
+    console.error(`Erro ao carregar atributos de ${tableName}:`, err);
+    return [];
+  }
+};
+
 // Carregar atributos quando uma tabela for selecionada
 const loadAttributes = async () => {
   if (!selectedTable.value) return;
@@ -158,6 +170,7 @@ const clearAll = () => {
           :sourceTable="selectedTable"
           :sourceAttributes="attributes"
           v-model:joins="joins"
+          :fetchTargetAttributes="fetchTableAttributes"
         />
       </v-col>
     </v-row>

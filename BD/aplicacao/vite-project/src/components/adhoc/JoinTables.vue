@@ -27,6 +27,10 @@ const props = defineProps({
     type: Array as () => Join[],
     default: () => [],
   },
+  fetchTargetAttributes: {
+    type: Function as () => (tableName: string) => Promise<{ name: string; type: string }[]>,
+    required: true,
+  },
 });
 
 const joins = ref<Join[]>(props.joins);
@@ -72,6 +76,21 @@ const addJoin = () => {
 const removeJoin = (index: number) => {
   joins.value.splice(index, 1);
 };
+
+const targetAttributes = ref<{ name: string; type: string }[]>([]);
+
+watch(
+  () => newJoin.value.targetTable,
+  async (newTable) => {
+    if (newTable) {
+      targetAttributes.value = await props.fetchTargetAttributes(newTable);
+    } else {
+      targetAttributes.value = [];
+    }
+  }
+);
+
+
 </script>
 
 <template>
@@ -117,6 +136,7 @@ const removeJoin = (index: number) => {
           <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.targetAttribute"
+              :items="targetAttributes.map((a) => a.name)"
               label="Atributo da Tabela Alvo"
               variant="outlined"
               density="comfortable"
