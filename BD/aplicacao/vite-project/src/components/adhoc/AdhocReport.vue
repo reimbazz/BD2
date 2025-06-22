@@ -12,7 +12,7 @@ import ReportViewer from "./ReportViewer.vue";
 const tables = ref<string[]>([]);
 const tablesJoin = ref<string[]>([]);
 const selectedTable = ref<string>("");
-const attributes = ref<{ name: string; type: string }[]>([]);
+const attributes = ref<{ name: string; type: string; table?: string; qualified_name?: string }[]>([]);
 const selectedAttributes = ref<string[]>([]);
 const joins = ref<any[]>([]);
 const groupByAttributes = ref<string[]>([]);
@@ -52,6 +52,50 @@ const fetchTableAttributes = async (tableName: string): Promise<{ name: string; 
   }
 };
 
+// Função para carregar atributos das tabelas joinadas
+const loadJoinedTablesAttributes = async () => {
+  if (!selectedTable.value) return;
+
+  try {
+    isLoading.value = true;
+    
+    if (joins.value.length === 0) {
+      // Se não há joins, carregar apenas os atributos da tabela principal
+      const response = await axios.get(
+        `http://localhost:8000/api/db/tables/${selectedTable.value}/columns`
+      );
+      attributes.value = response.data.columns.map((col: any) => ({
+        ...col,
+        table: selectedTable.value,
+        qualified_name: `${selectedTable.value}.${col.name}`
+      }));
+    } else {
+      // Se há joins, carregar atributos de todas as tabelas envolvidas
+      const response = await axios.post(
+        "http://localhost:8000/api/db/tables/joined-columns",
+        {
+          baseTable: selectedTable.value,
+          joins: joins.value
+        }
+      );
+      attributes.value = response.data.columns;
+    }
+    
+    // Limpar seleções de atributos que não existem mais
+    selectedAttributes.value = selectedAttributes.value.filter(attr => 
+      attributes.value.some(availableAttr => 
+        availableAttr.qualified_name === attr || availableAttr.name === attr
+      )
+    );
+    
+    isLoading.value = false;
+  } catch (err) {
+    console.error("Erro ao carregar atributos das tabelas joinadas:", err);
+    error.value = "Erro ao carregar atributos. Tente novamente mais tarde.";
+    isLoading.value = false;
+  }
+};
+
 // Carregar atributos quando uma tabela for selecionada
 const loadAttributes = async () => {
   if (!selectedTable.value) return;
@@ -64,7 +108,11 @@ const loadAttributes = async () => {
     const response = await axios.get(
       `http://localhost:8000/api/db/tables/${selectedTable.value}/columns`
     );
-    attributes.value = response.data.columns;
+    attributes.value = response.data.columns.map((col: any) => ({
+      ...col,
+      table: selectedTable.value,
+      qualified_name: `${selectedTable.value}.${col.name}`
+    }));
 
     isLoading.value = false;
   } catch (err) {
@@ -109,6 +157,13 @@ watch(selectedTable, async (newTable) => {
     selectedAttributes.value = [];
   }
 });
+
+// Observar mudanças nos joins para atualizar atributos disponíveis
+watch(joins, async () => {
+  if (selectedTable.value) {
+    await loadJoinedTablesAttributes();
+  }
+}, { deep: true });
 
 // Função para gerar o relatório
 const generateReport = async () => {

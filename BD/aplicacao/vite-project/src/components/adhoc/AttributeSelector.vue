@@ -4,6 +4,8 @@ import { ref, watch } from 'vue';
 interface Attribute {
   name: string;
   type: string;
+  table?: string;
+  qualified_name?: string;
 }
 
 const emit = defineEmits(['update:selectedAttributes']);
@@ -30,7 +32,9 @@ watch(() => props.selectedAttributes, (newValue) => {
 });
 
 const selectAll = () => {
-  selectedAttributesLocal.value = props.attributes.map(attr => attr.name);
+  selectedAttributesLocal.value = props.attributes.map(attr => 
+    attr.qualified_name || attr.name
+  );
 };
 
 const clearSelection = () => {
@@ -62,19 +66,23 @@ const clearSelection = () => {
         >
           Limpar Seleção
         </v-btn>
-      </div>
-      <v-list density="compact" v-if="attributes.length > 0">
+      </div>      <v-list density="compact" v-if="attributes.length > 0">
         <v-list-item v-for="(attr, index) in attributes" :key="index">
           <template v-slot:prepend>
             <v-checkbox
               v-model="selectedAttributesLocal"
-              :value="attr.name"
+              :value="attr.qualified_name || attr.name"
               color="primary"
               hide-details
             ></v-checkbox>
           </template>
-          <v-list-item-title>{{ attr.name }}</v-list-item-title>
-          <v-list-item-subtitle>{{ attr.type }}</v-list-item-subtitle>
+          <v-list-item-title>
+            {{ attr.qualified_name || attr.name }}
+          </v-list-item-title>
+          <v-list-item-subtitle>
+            {{ attr.type }}
+            <span v-if="attr.table" class="text-info ml-2">({{ attr.table }})</span>
+          </v-list-item-subtitle>
         </v-list-item>
       </v-list>
       <div v-else class="text-center pa-4">
