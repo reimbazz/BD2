@@ -50,7 +50,9 @@ watch(groupByAttributesLocal, (newValue) => {
 });
 
 watch(aggregateFunctionsLocal, (newValue) => {
-  emit('update:aggregateFunctions', newValue);
+  // Converter para o formato esperado pelo backend ao emitir
+  const convertedAggs = newValue.map(agg => convertAggFormat(agg));
+  emit('update:aggregateFunctions', convertedAggs);
 }, { deep: true });
 
 const addAggregateFunction = () => {
@@ -73,6 +75,15 @@ const addAggregateFunction = () => {
 
 const removeAggregateFunction = (index: number) => {
   aggregateFunctionsLocal.value.splice(index, 1);
+};
+
+// Método auxiliar para converter formatos de agregação
+const convertAggFormat = (agg: AggregateFunction) => {
+  return {
+    function: agg.name,
+    attribute: agg.attribute,
+    alias: agg.alias
+  };
 };
 </script>
 

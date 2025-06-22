@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
 interface Attribute {
   name: string;
@@ -40,7 +40,9 @@ const availableAttributes = computed(() => {
 });
 
 watch(orderByColumnsLocal, (newValue) => {
-  emit('update:orderByColumns', newValue);
+  // Converter para o formato esperado pelo backend ao emitir
+  const convertedOrders = newValue.map(order => convertOrderFormat(order));
+  emit('update:orderByColumns', convertedOrders);
 }, { deep: true });
 
 const addOrderBy = () => {
@@ -73,6 +75,14 @@ const moveDown = (index: number) => {
     orderByColumnsLocal.value[index] = orderByColumnsLocal.value[index + 1];
     orderByColumnsLocal.value[index + 1] = temp;
   }
+};
+
+// Método auxiliar para converter formatos de ordenação
+const convertOrderFormat = (order: OrderBy) => {
+  return {
+    column: order.attribute,
+    direction: order.direction
+  };
 };
 </script>
 
@@ -147,7 +157,3 @@ const moveDown = (index: number) => {
     </v-card-text>
   </v-card>
 </template>
-
-<script lang="ts">
-import { computed } from 'vue';
-</script>

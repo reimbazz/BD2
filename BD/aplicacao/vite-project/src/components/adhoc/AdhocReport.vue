@@ -175,11 +175,41 @@ const generateReport = async () => {
   try {
     isLoading.value = true;
     error.value = "";
-
+      // Preparar o payload com as configurações do relatório
+    const payload = {
+      baseTable: selectedTable.value,
+      attributes: selectedAttributes.value,
+      joins: joins.value,
+      groupByAttributes: groupByAttributes.value,
+      aggregateFunctions: aggregateFunctions.value,
+      orderByColumns: orderByColumns.value,
+      filters: [], // Implementar filtros posteriormente
+      limit: 1000
+    };
+    
+    // Enviar solicitação para o backend
+    const response = await axios.post(
+      "http://localhost:8000/api/db/report",
+      payload
+    );
+    
+    // Atualizar dados e query SQL
+    reportData.value = response.data.data;
+    sqlQuery.value = response.data.sql;
+    
+    if (reportData.value.length === 0) {
+      error.value = "A consulta não retornou resultados.";
+    }
+    
     isLoading.value = false;
   } catch (err) {
     console.error("Erro ao gerar relatório:", err);
-    error.value = "Erro ao gerar relatório. Tente novamente mais tarde.";
+    let errorMessage = "Erro ao gerar relatório.";
+    if (typeof err === "object" && err !== null) {
+      const e = err as { response?: { data?: { detail?: string } }, message?: string };
+      errorMessage += " " + (e.response?.data?.detail || e.message || "");
+    }
+    error.value = errorMessage;
     isLoading.value = false;
   }
 };
