@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import type { PropType } from "vue";
 
 interface Join {
   targetTable: string;
@@ -26,11 +27,10 @@ const props = defineProps({
   joins: {
     type: Array as () => Join[],
     default: () => [],
-  },
-  fetchTargetAttributes: {
-    type: Function as () => (tableName: string) => Promise<{ name: string; type: string }[]>,
+  },  fetchTargetAttributes: {
+    type: Function as PropType<(tableName: string) => Promise<{ name: string; type: string }[]>>,
     required: true,
-  },
+  } as any,
 });
 
 const joins = ref<Join[]>(props.joins);
@@ -78,17 +78,47 @@ const removeJoin = (index: number) => {
 };
 
 const targetAttributes = ref<{ name: string; type: string }[]>([]);
+const suggestedJoinColumns = ref<{source: string, target: string}[]>([]);
 
 watch(
   () => newJoin.value.targetTable,
   async (newTable) => {
     if (newTable) {
       targetAttributes.value = await props.fetchTargetAttributes(newTable);
+      // Buscar sugestões de join baseadas em FKs
+      await fetchJoinSuggestions(newTable);
     } else {
       targetAttributes.value = [];
+      suggestedJoinColumns.value = [];
     }
   }
 );
+
+const fetchJoinSuggestions = async (targetTable: string) => {
+  if (!props.sourceTable || !targetTable) return;
+  
+  try {
+    const response = await fetch(
+      `http://localhost:8000/api/db/tables/${props.sourceTable}/foreign-keys/${targetTable}`
+    );
+    if (response.ok) {
+      const data = await response.json();
+      suggestedJoinColumns.value = data.relations.map((rel: any) => ({
+        source: rel.source_column,
+        target: rel.target_column
+      }));
+      
+      // Se há uma sugestão, aplicar automaticamente
+      if (suggestedJoinColumns.value.length > 0) {
+        const suggestion = suggestedJoinColumns.value[0];
+        newJoin.value.sourceAttribute = suggestion.source;
+        newJoin.value.targetAttribute = suggestion.target;
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao buscar sugestões de join:', error);
+  }
+};
 
 
 </script>
@@ -122,8 +152,7 @@ watch(
               density="comfortable"
               :disabled="!sourceTable"
             ></v-select>
-          </v-col>
-          <v-col cols="12" sm="6">
+          </v-col>          <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.sourceAttribute"
               :items="sourceAttributes.map((a) => a.name)"
@@ -132,6 +161,9 @@ watch(
               density="comfortable"
               :disabled="!sourceTable"
             ></v-select>
+            <div v-if="suggestedJoinColumns.length > 0" class="text-caption text-info mt-1">
+              Sugestão: {{ suggestedJoinColumns[0].source }}
+            </div>
           </v-col>
           <v-col cols="12" sm="6">
             <v-select
@@ -142,6 +174,9 @@ watch(
               density="comfortable"
               :disabled="!newJoin.targetTable"
             ></v-select>
+            <div v-if="suggestedJoinColumns.length > 0" class="text-caption text-info mt-1">
+              Sugestão: {{ suggestedJoinColumns[0].target }}
+            </div>
           </v-col>
         </v-row>
         <v-btn
