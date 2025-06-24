@@ -182,8 +182,7 @@ class ConsultaDAO:
                         raise ValueError(f"Coluna '{column_name}' não encontrada na tabela '{table_name}'")
                     
                     return getattr(model, column_name)
-                
-                # Adicionar colunas selecionadas
+                  # Adicionar colunas selecionadas
                 for attr in attributes:
                     if "." in attr:
                         table_name, col_name = attr.split(".")
@@ -198,16 +197,34 @@ class ConsultaDAO:
                             column_names_count[col_name] = 1
                             select_columns.append(column_obj)
                     else:
-                        # Para colunas sem qualificador de tabela
-                        column_obj = get_column_from_table(base_table, attr)
+                        # Para colunas sem qualificador de tabela, tentar encontrar em todas as tabelas
+                        found = False
+                        for table_name, model in table_aliases.items():
+                            if hasattr(model, attr):
+                                column_obj = getattr(model, attr)
+                                found = True
+                                
+                                # Adicionar um alias se o mesmo nome de coluna existe em múltiplas tabelas
+                                if attr in column_names_count:
+                                    column_names_count[attr] += 1
+                                    column_alias = f"{attr}_{table_name}"
+                                    select_columns.append(column_obj.label(column_alias))
+                                else:
+                                    column_names_count[attr] = 1
+                                    select_columns.append(column_obj)
+                                break
                         
-                        if attr in column_names_count:
-                            column_names_count[attr] += 1
-                            column_alias = f"{attr}_{base_table}"
-                            select_columns.append(column_obj.label(column_alias))
-                        else:
-                            column_names_count[attr] = 1
-                            select_columns.append(column_obj)
+                        if not found:
+                            # Se não encontrou em nenhuma tabela, usar a tabela base
+                            column_obj = get_column_from_table(base_table, attr)
+                            
+                            if attr in column_names_count:
+                                column_names_count[attr] += 1
+                                column_alias = f"{attr}_{base_table}"
+                                select_columns.append(column_obj.label(column_alias))
+                            else:
+                                column_names_count[attr] = 1
+                                select_columns.append(column_obj)
                 
                 # Adicionar funções de agregação
                 for agg in aggregate_functions:
@@ -227,13 +244,22 @@ class ConsultaDAO:
                     agg_func = getattr(func, function_name.lower(), None)
                     if not agg_func:
                         raise ValueError(f"Função de agregação '{function_name}' não suportada")
-                    
-                    # Obter a coluna para aplicar a função
+                      # Obter a coluna para aplicar a função
                     if "." in attr:
                         table_name, col_name = attr.split(".")
                         column_obj = get_column_from_table(table_name, col_name)
                     else:
-                        column_obj = get_column_from_table(base_table, attr)
+                        # Se não tiver qualificação, buscar primeiro entre os aliases definidos
+                        # e depois na tabela base
+                        found = False
+                        for table_name, model in table_aliases.items():
+                            if hasattr(model, attr):
+                                column_obj = getattr(model, attr)
+                                found = True
+                                break
+                        
+                        if not found:
+                            column_obj = get_column_from_table(base_table, attr)
                     
                     # Adicionar a função de agregação com o alias
                     select_columns.append(agg_func(column_obj).label(alias_name))
@@ -243,6 +269,8 @@ class ConsultaDAO:
                 
                 # Definir a tabela base (FROM)
                 from_obj = base_model
+                  # Inicializar o objeto FROM
+                from_obj = base_model.__table__
                 
                 # Adicionar JOINs
                 for join_info in joins:
@@ -289,14 +317,15 @@ class ConsultaDAO:
                     
                     # Adicionar o join à consulta
                     if join_type == "INNER":
-                        from_obj = from_obj.__table__.join(target_model.__table__, join_condition)
+                        from_obj = from_obj.join(target_model.__table__, join_condition)
                     elif join_type == "LEFT":
-                        from_obj = from_obj.__table__.join(target_model.__table__, join_condition, isouter=True)
+                        from_obj = from_obj.join(target_model.__table__, join_condition, isouter=True)
                     elif join_type == "RIGHT":
                         # SQLAlchemy não tem right join diretamente, então invertemos a condição
-                        from_obj = target_model.__table__.join(from_obj.__table__, join_condition, isouter=True)
+                        # Note: essa abordagem não é ideal para múltiplos joins, mas mantida para compatibilidade
+                        from_obj = target_model.__table__.join(from_obj, join_condition, isouter=True)
                     else:  # Default to INNER
-                        from_obj = from_obj.__table__.join(target_model.__table__, join_condition)
+                        from_obj = from_obj.join(target_model.__table__, join_condition)
                 
                 # Definir a cláusula FROM
                 query = query.select_from(from_obj)
@@ -355,8 +384,7 @@ class ConsultaDAO:
                 # Adicionar as condições de filtro à consulta
                 if filter_conditions:
                     query = query.where(and_(*filter_conditions))
-                
-                # Adicionar GROUP BY
+                  # Adicionar GROUP BY
                 if group_by_attributes:
                     group_by_columns = []
                     for attr in group_by_attributes:
@@ -364,7 +392,18 @@ class ConsultaDAO:
                             table_name, col_name = attr.split(".")
                             column_obj = get_column_from_table(table_name, col_name)
                         else:
-                            column_obj = get_column_from_table(base_table, attr)
+                            # Se não tiver qualificação, buscar primeiro entre os aliases definidos
+                            # e depois na tabela base
+                            found = False
+                            for table_name, model in table_aliases.items():
+                                if hasattr(model, attr):
+                                    column_obj = getattr(model, attr)
+                                    found = True
+                                    break
+                            
+                            if not found:
+                                column_obj = get_column_from_table(base_table, attr)
+                                
                         group_by_columns.append(column_obj)
                     
                     query = query.group_by(*group_by_columns)
@@ -384,13 +423,22 @@ class ConsultaDAO:
                         
                         if not attr:
                             continue
-                        
-                        # Obter a coluna para ordenação
+                          # Obter a coluna para ordenação
                         if "." in attr:
                             table_name, col_name = attr.split(".")
                             column_obj = get_column_from_table(table_name, col_name)
                         else:
-                            column_obj = get_column_from_table(base_table, attr)
+                            # Se não tiver qualificação, buscar primeiro entre os aliases definidos
+                            # e depois na tabela base
+                            found = False
+                            for table_name, model in table_aliases.items():
+                                if hasattr(model, attr):
+                                    column_obj = getattr(model, attr)
+                                    found = True
+                                    break
+                            
+                            if not found:
+                                column_obj = get_column_from_table(base_table, attr)
                         
                         # Adicionar a direção de ordenação
                         if direction == "DESC":

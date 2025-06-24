@@ -19,9 +19,8 @@ const props = defineProps({
   sourceTable: {
     type: String,
     default: "",
-  },
-  sourceAttributes: {
-    type: Array as () => { name: string; type: string }[],
+  },  sourceAttributes: {
+    type: Array as () => { name: string; type: string; table?: string; qualified_name?: string }[],
     default: () => [],
   },
   joins: {
@@ -77,14 +76,18 @@ const removeJoin = (index: number) => {
   joins.value.splice(index, 1);
 };
 
-const targetAttributes = ref<{ name: string; type: string }[]>([]);
+const targetAttributes = ref<{ name: string; type: string; qualified_name?: string }[]>([]);
 const suggestedJoinColumns = ref<{source: string, target: string}[]>([]);
 
 watch(
-  () => newJoin.value.targetTable,
-  async (newTable) => {
+  () => newJoin.value.targetTable,  async (newTable) => {
     if (newTable) {
-      targetAttributes.value = await props.fetchTargetAttributes(newTable);
+      // Buscar atributos da tabela alvo
+      const attrs = await props.fetchTargetAttributes(newTable);      // Qualificar os atributos da tabela alvo
+      targetAttributes.value = attrs.map((attr: { name: string; type: string }) => ({
+        ...attr,
+        qualified_name: `${newTable}.${attr.name}`
+      }));
       // Buscar sugestões de join baseadas em FKs
       await fetchJoinSuggestions(newTable);
     } else {
@@ -107,12 +110,13 @@ const fetchJoinSuggestions = async (targetTable: string) => {
         source: rel.source_column,
         target: rel.target_column
       }));
-      
-      // Se há uma sugestão, aplicar automaticamente
+        // Se há uma sugestão, aplicar automaticamente
       if (suggestedJoinColumns.value.length > 0) {
         const suggestion = suggestedJoinColumns.value[0];
-        newJoin.value.sourceAttribute = suggestion.source;
-        newJoin.value.targetAttribute = suggestion.target;
+        // Qualificar o atributo de origem com o nome da tabela
+        newJoin.value.sourceAttribute = `${props.sourceTable}.${suggestion.source}`;
+        // Qualificar o atributo de destino com o nome da tabela
+        newJoin.value.targetAttribute = `${targetTable}.${suggestion.target}`;
       }
     }
   } catch (error) {
@@ -155,7 +159,7 @@ const fetchJoinSuggestions = async (targetTable: string) => {
           </v-col>          <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.sourceAttribute"
-              :items="sourceAttributes.map((a) => a.name)"
+              :items="sourceAttributes.map((a) => a.qualified_name || a.name)"
               label="Atributo da Tabela Origem"
               variant="outlined"
               density="comfortable"
@@ -164,18 +168,17 @@ const fetchJoinSuggestions = async (targetTable: string) => {
             <div v-if="suggestedJoinColumns.length > 0" class="text-caption text-info mt-1">
               Sugestão: {{ suggestedJoinColumns[0].source }}
             </div>
-          </v-col>
-          <v-col cols="12" sm="6">
+          </v-col>          <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.targetAttribute"
-              :items="targetAttributes.map((a) => a.name)"
+              :items="targetAttributes.map((a) => `${newJoin.targetTable}.${a.name}`)"
               label="Atributo da Tabela Alvo"
               variant="outlined"
               density="comfortable"
               :disabled="!newJoin.targetTable"
             ></v-select>
             <div v-if="suggestedJoinColumns.length > 0" class="text-caption text-info mt-1">
-              Sugestão: {{ suggestedJoinColumns[0].target }}
+              Sugestão: {{ newJoin.targetTable }}.{{ suggestedJoinColumns[0].target }}
             </div>
           </v-col>
         </v-row>
@@ -201,10 +204,9 @@ const fetchJoinSuggestions = async (targetTable: string) => {
           <v-list-item v-for="(join, index) in joins" :key="index">
             <template v-slot:prepend>
               <v-icon>mdi-link-variant</v-icon>
-            </template>
-            <v-list-item-title>
-              {{ sourceTable }}.{{ join.sourceAttribute }} {{ join.joinType }}
-              {{ join.targetTable }}.{{ join.targetAttribute }}
+            </template>            <v-list-item-title>
+              {{ join.sourceAttribute }} {{ join.joinType }}
+              {{ join.targetAttribute }}
             </v-list-item-title>
             <template v-slot:append>
               <v-btn

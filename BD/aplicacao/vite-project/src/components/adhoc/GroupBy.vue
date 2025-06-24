@@ -4,10 +4,12 @@ import { ref, watch } from 'vue';
 interface Attribute {
   name: string;
   type: string;
+  table?: string;
+  qualified_name?: string;
 }
 
 interface AggregateFunction {
-  name: string;
+  function: string;
   attribute: string;
   alias: string;
 }
@@ -32,7 +34,7 @@ const props = defineProps({
 const groupByAttributesLocal = ref<string[]>(props.groupByAttributes);
 const aggregateFunctionsLocal = ref<AggregateFunction[]>(props.aggregateFunctions);
 const newAggregate = ref<AggregateFunction>({
-  name: 'COUNT',
+  function: 'COUNT',
   attribute: '',
   alias: ''
 });
@@ -50,23 +52,22 @@ watch(groupByAttributesLocal, (newValue) => {
 });
 
 watch(aggregateFunctionsLocal, (newValue) => {
-  // Converter para o formato esperado pelo backend ao emitir
-  const convertedAggs = newValue.map(agg => convertAggFormat(agg));
-  emit('update:aggregateFunctions', convertedAggs);
+  // Emitir as funções de agregação diretamente, sem converter
+  emit('update:aggregateFunctions', newValue);
 }, { deep: true });
 
 const addAggregateFunction = () => {
-  if (newAggregate.value.name && newAggregate.value.attribute) {
+  if (newAggregate.value.function && newAggregate.value.attribute) {
     // Gerar um alias se não foi especificado
     if (!newAggregate.value.alias) {
-      newAggregate.value.alias = `${newAggregate.value.name}_${newAggregate.value.attribute}`;
+      newAggregate.value.alias = `${newAggregate.value.function}_${newAggregate.value.attribute}`;
     }
     
     aggregateFunctionsLocal.value.push({ ...newAggregate.value });
     
     // Reset
     newAggregate.value = {
-      name: 'COUNT',
+      function: 'COUNT',
       attribute: '',
       alias: ''
     };
@@ -76,15 +77,6 @@ const addAggregateFunction = () => {
 const removeAggregateFunction = (index: number) => {
   aggregateFunctionsLocal.value.splice(index, 1);
 };
-
-// Método auxiliar para converter formatos de agregação
-const convertAggFormat = (agg: AggregateFunction) => {
-  return {
-    function: agg.name,
-    attribute: agg.attribute,
-    alias: agg.alias
-  };
-};
 </script>
 
 <template>
@@ -93,10 +85,9 @@ const convertAggFormat = (agg: AggregateFunction) => {
       <v-icon start>mdi-group</v-icon>
       Agrupar Por
     </v-card-title>
-    <v-card-text>
-      <v-select
+    <v-card-text>      <v-select
         v-model="groupByAttributesLocal"
-        :items="attributes.map(attr => attr.name)"
+        :items="attributes.map(attr => attr.qualified_name || attr.name)"
         label="Atributos para agrupar"
         variant="outlined"
         density="comfortable"
@@ -114,20 +105,18 @@ const convertAggFormat = (agg: AggregateFunction) => {
       <div class="text-subtitle-1 mb-2">Funções de Agregação</div>
 
       <v-form @submit.prevent="addAggregateFunction">
-        <v-row>
-          <v-col cols="12" sm="4">
+        <v-row>          <v-col cols="12" sm="4">
             <v-select
-              v-model="newAggregate.name"
+              v-model="newAggregate.function"
               :items="aggregateFunctionOptions"
               label="Função"
               variant="outlined"
               density="comfortable"
             ></v-select>
           </v-col>
-          <v-col cols="12" sm="4">
-            <v-select
+          <v-col cols="12" sm="4">            <v-select
               v-model="newAggregate.attribute"
-              :items="attributes.map(attr => attr.name)"
+              :items="attributes.map(attr => attr.qualified_name || attr.name)"
               label="Atributo"
               variant="outlined"
               density="comfortable"
@@ -143,11 +132,10 @@ const convertAggFormat = (agg: AggregateFunction) => {
               placeholder="Nome personalizado"
             ></v-text-field>
           </v-col>
-        </v-row>
-        <v-btn
+        </v-row>        <v-btn
           color="primary"
           @click="addAggregateFunction"
-          :disabled="!newAggregate.name || !newAggregate.attribute"
+          :disabled="!newAggregate.function || !newAggregate.attribute"
         >
           Adicionar Função
         </v-btn>
@@ -155,9 +143,8 @@ const convertAggFormat = (agg: AggregateFunction) => {
 
       <div v-if="aggregateFunctionsLocal.length > 0" class="mt-4">
         <v-list density="compact">
-          <v-list-item v-for="(func, index) in aggregateFunctionsLocal" :key="index">
-            <v-list-item-title>
-              {{ func.name }}({{ func.attribute }})
+          <v-list-item v-for="(func, index) in aggregateFunctionsLocal" :key="index">            <v-list-item-title>
+              {{ func.function }}({{ func.attribute }})
               <span v-if="func.alias">AS {{ func.alias }}</span>
             </v-list-item-title>
             <template v-slot:append>

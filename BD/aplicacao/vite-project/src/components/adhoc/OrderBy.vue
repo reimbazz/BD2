@@ -4,6 +4,8 @@ import { ref, watch, computed } from 'vue';
 interface Attribute {
   name: string;
   type: string;
+  table?: string;
+  qualified_name?: string;
 }
 
 interface OrderBy {
@@ -36,7 +38,7 @@ const newOrderBy = ref<OrderBy>({
 
 // Combina atributos regulares e atributos de agrupamento para ordenação
 const availableAttributes = computed(() => {
-  return props.attributes.map(attr => attr.name);
+  return props.attributes.map(attr => attr.qualified_name || attr.name);
 });
 
 watch(orderByColumnsLocal, (newValue) => {
