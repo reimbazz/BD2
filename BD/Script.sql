@@ -99,11 +99,9 @@ ALTER TABLE country_geography
     DROP COLUMN borders;
 
 -- Criacao dos usuarios e permissões
-
 CREATE ROLE documentador;
 CREATE ROLE programador;
 CREATE ROLE dba;
-
 
 CREATE USER hiara WITH PASSWORD '1234';
 GRANT documentador TO hiara;
@@ -125,6 +123,8 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO dba WITH GRANT OPTION;
 
 GRANT documentador TO dba WITH ADMIN OPTION;
 GRANT programador TO dba WITH ADMIN OPTION;
+
+GRANT USAGE ON SCHEMA public TO documentador, programador, dba;
 --Criação de índices
 
 -- Tabela countries
