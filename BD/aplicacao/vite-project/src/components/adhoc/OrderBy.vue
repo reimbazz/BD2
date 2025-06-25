@@ -13,6 +13,12 @@ interface OrderBy {
   direction: 'ASC' | 'DESC';
 }
 
+interface AggregateFunction {
+  function: string;
+  attribute: string;
+  alias: string;
+}
+
 const emit = defineEmits(['update:orderByColumns']);
 
 const props = defineProps({
@@ -22,6 +28,10 @@ const props = defineProps({
   },
   groupByAttributes: {
     type: Array as () => string[],
+    default: () => []
+  },
+  aggregateFunctions: {
+    type: Array as () => AggregateFunction[],
     default: () => []
   },
   orderByColumns: {
@@ -36,15 +46,51 @@ const newOrderBy = ref<OrderBy>({
   direction: 'ASC'
 });
 
-// Combina atributos regulares e atributos de agrupamento para ordenação
 const availableAttributes = computed(() => {
-  return props.attributes.map(attr => attr.qualified_name || attr.name);
+  const selectedAttrs = props.attributes.map(attr => attr.qualified_name || attr.name);
+
+  const groupByAttrs = props.groupByAttributes;
+
+  const aggregateAliases = props.aggregateFunctions
+    .map(func => func.alias)
+    .filter(alias => alias);
+
+  const combinedAttributes = new Set([...selectedAttrs, ...groupByAttrs, ...aggregateAliases]);
+
+  return Array.from(combinedAttributes);
 });
 
-watch(orderByColumnsLocal, (newValue) => {
-  // Converter para o formato esperado pelo backend ao emitir
-  const convertedOrders = newValue.map(order => convertOrderFormat(order));
-  emit('update:orderByColumns', convertedOrders);
+watch(() => props.orderByColumns, (newOrdersFromParent) => {
+    if (newOrdersFromParent.length > 0 && 'column' in newOrdersFromParent[0]) {
+        orderByColumnsLocal.value = newOrdersFromParent.map((order: any) => ({
+            attribute: order.column,
+            direction: order.direction
+        }));
+    } else {
+        orderByColumnsLocal.value = newOrdersFromParent;
+    }
+}, {deep: true});
+
+watch (() => props.attributes, (newAvailableAttributes) => {
+    if(newOrderBy.value.attribute) {
+        const isStillAvailable = newAvailableAttributes.some(
+            attr => (attr.qualified_name || attr.name) === newOrderBy.value.attribute
+        );
+
+        if(!isStillAvailable) {
+            newOrderBy.value.attribute = '';
+        }
+    }
+}, {deep: true});
+
+watch(orderByColumnsLocal, (newValue, oldValue) => {
+  const newConvertedValue = newValue.map(order => convertOrderFormat(order));
+  
+  const oldConvertedValue = oldValue ? oldValue.map(order => convertOrderFormat(order)) : [];
+
+  if (JSON.stringify(newConvertedValue) !== JSON.stringify(oldConvertedValue)) {
+    emit('update:orderByColumns', newConvertedValue);
+  }
 }, { deep: true });
 
 const addOrderBy = () => {

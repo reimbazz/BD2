@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, computed } from "vue";
 import axios from "axios";
 import TableSelector from "./TableSelector.vue";
 import AttributeSelector from "./AttributeSelector.vue";
@@ -121,6 +121,26 @@ const loadAttributes = async () => {
     isLoading.value = false;
   }
 };
+
+const filteredAttributes = computed(() => {
+    if(!selectedAttributes.value || selectedAttributes.value.length === 0) {
+        return [];
+    }
+
+    return attributes.value.filter(attr =>
+        selectedAttributes.value.includes(attr.qualified_name || attr.name)
+    );
+});
+
+watch(filteredAttributes, (newAvailableAttrs) =>{
+    const availableNames = newAvailableAttrs.map(a => a.qualified_name || a.name);
+
+    groupByAttributes.value = groupByAttributes.value.filter(name => availableNames.includes(name));
+
+    aggregateFunctions.value = aggregateFunctions.value.filter(func => availableNames.includes(func.attribute))
+
+    orderByColumns.value = orderByColumns.value.filter(col => availableNames.includes(col.columns))
+}, {deep: true});
 
 const loadTablesJoin = async () => {
   try {
@@ -263,7 +283,8 @@ const clearAll = () => {
     <v-row>
       <v-col cols="12" md="6">
         <GroupBy
-          :attributes="attributes"
+          :attributes="filteredAttributes"
+          :allAvailableAttributes="attributes"
           v-model:groupByAttributes="groupByAttributes"
           v-model:aggregateFunctions="aggregateFunctions"
         />
@@ -271,8 +292,9 @@ const clearAll = () => {
 
       <v-col cols="12" md="6">
         <OrderBy
-          :attributes="attributes"
+          :attributes="filteredAttributes"
           :groupByAttributes="groupByAttributes"
+          :aggregateFunctions="aggregateFunctions"
           v-model:orderByColumns="orderByColumns"
         />
       </v-col>

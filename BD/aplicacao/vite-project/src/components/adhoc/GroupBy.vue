@@ -21,6 +21,10 @@ const props = defineProps({
     type: Array as () => Attribute[],
     default: () => []
   },
+  allAvailableAttributes: {
+    type: Array as () => Attribute[],
+    default: () => []
+  },
   groupByAttributes: {
     type: Array as () => string[],
     default: () => []
@@ -66,6 +70,14 @@ watch(aggregateFunctionsLocal, (newValue) => {
   // Emitir as funções de agregação diretamente, sem converter
   emit('update:aggregateFunctions', newValue);
 }, { deep: true });
+
+watch(() => props.groupByAttributes, (newValue) => {
+    groupByAttributesLocal.value = newValue;
+});
+
+watch(() => props.aggregateFunctions, (newValue)=> {
+    aggregateFunctionsLocal.value = newValue;
+}, {deep: true});
 
 function getAttributeType(attrName: string): string | null {
     const attr = props.attributes.find(a=> (a.qualified_name || a.name) === attrName);
@@ -145,7 +157,7 @@ const removeAggregateFunction = (index: number) => {
           </v-col>
           <v-col cols="12" sm="4">            <v-select
               v-model="newAggregate.attribute"
-              :items="attributes.map(attr => attr.qualified_name || attr.name)"
+              :items="allAvailableAttributes.map(attr => attr.qualified_name || attr.name)"
               label="Atributo"
               variant="outlined"
               density="comfortable"
