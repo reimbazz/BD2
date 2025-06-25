@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 interface Attribute {
   name: string;
@@ -39,6 +39,12 @@ const newAggregate = ref<AggregateFunction>({
   alias: ''
 });
 
+watch(() => newAggregate.value.attribute, (newAttr) => {
+  if (newAttr) {
+    newAggregate.value.function = 'COUNT';
+  }
+});
+
 const aggregateFunctionOptions = [
   'COUNT',
   'SUM',
@@ -46,6 +52,11 @@ const aggregateFunctionOptions = [
   'MIN',
   'MAX'
 ];
+
+const aggregateFunctionMap: Record<string, string[]> = {
+    number: ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'],
+    string: ['COUNT']
+}
 
 watch(groupByAttributesLocal, (newValue) => {
   emit('update:groupByAttributes', newValue);
@@ -55,6 +66,24 @@ watch(aggregateFunctionsLocal, (newValue) => {
   // Emitir as funções de agregação diretamente, sem converter
   emit('update:aggregateFunctions', newValue);
 }, { deep: true });
+
+function getAttributeType(attrName: string): string | null {
+    const attr = props.attributes.find(a=> (a.qualified_name || a.name) === attrName);
+    if (!attr) return null;
+
+    const type = attr.type.toLowerCase();
+    if (['integer', 'bigint', 'double precision'].includes(type)) return 'number';
+    if (['varchar(100)', 'varchar(10)', 'char(3)'].includes(type)) return 'string';
+
+    return null;
+}
+
+const availableFunctions = computed(() => {
+    const type = getAttributeType(newAggregate.value.attribute);
+    if (!type) return aggregateFunctionOptions;
+    return aggregateFunctionMap[type] || ['COUNT'];
+});
+
 
 const addAggregateFunction = () => {
   if (newAggregate.value.function && newAggregate.value.attribute) {
@@ -108,7 +137,7 @@ const removeAggregateFunction = (index: number) => {
         <v-row>          <v-col cols="12" sm="4">
             <v-select
               v-model="newAggregate.function"
-              :items="aggregateFunctionOptions"
+              :items="availableFunctions"
               label="Função"
               variant="outlined"
               density="comfortable"
