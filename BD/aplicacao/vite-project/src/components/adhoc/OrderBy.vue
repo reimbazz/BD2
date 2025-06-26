@@ -140,7 +140,7 @@ const convertOrderFormat = (order: OrderBy) => {
       <v-icon start>mdi-sort</v-icon>
       Ordenar Por
     </v-card-title>
-    <v-card-text>
+    <v-card-text class="pa-4">
       <v-form @submit.prevent="addOrderBy">
         <v-row>
           <v-col cols="12" sm="8">

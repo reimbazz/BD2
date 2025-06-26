@@ -116,7 +116,8 @@ class ConsultaDAO:
                 if fk['referred_table'] == source_table:
                     relations.append({
                         'source_column': fk['referred_columns'][0],
-                        'target_column': fk['constrained_columns'][0],                        'direction': 'target_to_source'
+                        'target_column': fk['constrained_columns'][0],
+                        'direction': 'target_to_source'
                     })
             
             return relations

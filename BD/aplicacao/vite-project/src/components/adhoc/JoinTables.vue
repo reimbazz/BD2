@@ -19,15 +19,24 @@ const props = defineProps({
   sourceTable: {
     type: String,
     default: "",
-  },  sourceAttributes: {
-    type: Array as () => { name: string; type: string; table?: string; qualified_name?: string }[],
+  },
+  sourceAttributes: {
+    type: Array as () => {
+      name: string;
+      type: string;
+      table?: string;
+      qualified_name?: string;
+    }[],
     default: () => [],
   },
   joins: {
     type: Array as () => Join[],
     default: () => [],
-  },  fetchTargetAttributes: {
-    type: Function as PropType<(tableName: string) => Promise<{ name: string; type: string }[]>>,
+  },
+  fetchTargetAttributes: {
+    type: Function as PropType<
+      (tableName: string) => Promise<{ name: string; type: string }[]>
+    >,
     required: true,
   } as any,
 });
@@ -76,18 +85,23 @@ const removeJoin = (index: number) => {
   joins.value.splice(index, 1);
 };
 
-const targetAttributes = ref<{ name: string; type: string; qualified_name?: string }[]>([]);
-const suggestedJoinColumns = ref<{source: string, target: string}[]>([]);
+const targetAttributes = ref<
+  { name: string; type: string; qualified_name?: string }[]
+>([]);
+const suggestedJoinColumns = ref<{ source: string; target: string }[]>([]);
 
 watch(
-  () => newJoin.value.targetTable,  async (newTable) => {
+  () => newJoin.value.targetTable,
+  async (newTable) => {
     if (newTable) {
       // Buscar atributos da tabela alvo
-      const attrs = await props.fetchTargetAttributes(newTable);      // Qualificar os atributos da tabela alvo
-      targetAttributes.value = attrs.map((attr: { name: string; type: string }) => ({
-        ...attr,
-        qualified_name: `${newTable}.${attr.name}`
-      }));
+      const attrs = await props.fetchTargetAttributes(newTable); // Qualificar os atributos da tabela alvo
+      targetAttributes.value = attrs.map(
+        (attr: { name: string; type: string }) => ({
+          ...attr,
+          qualified_name: `${newTable}.${attr.name}`,
+        })
+      );
       // Buscar sugestões de join baseadas em FKs
       await fetchJoinSuggestions(newTable);
     } else {
@@ -99,7 +113,7 @@ watch(
 
 const fetchJoinSuggestions = async (targetTable: string) => {
   if (!props.sourceTable || !targetTable) return;
-  
+
   try {
     const response = await fetch(
       `http://localhost:8000/api/db/tables/${props.sourceTable}/foreign-keys/${targetTable}`
@@ -108,9 +122,9 @@ const fetchJoinSuggestions = async (targetTable: string) => {
       const data = await response.json();
       suggestedJoinColumns.value = data.relations.map((rel: any) => ({
         source: rel.source_column,
-        target: rel.target_column
+        target: rel.target_column,
       }));
-        // Se há uma sugestão, aplicar automaticamente
+      // Se há uma sugestão, aplicar automaticamente
       if (suggestedJoinColumns.value.length > 0) {
         const suggestion = suggestedJoinColumns.value[0];
         // Qualificar o atributo de origem com o nome da tabela
@@ -120,11 +134,9 @@ const fetchJoinSuggestions = async (targetTable: string) => {
       }
     }
   } catch (error) {
-    console.error('Erro ao buscar sugestões de join:', error);
+    console.error("Erro ao buscar sugestões de join:", error);
   }
 };
-
-
 </script>
 
 <template>
@@ -156,30 +168,24 @@ const fetchJoinSuggestions = async (targetTable: string) => {
               density="comfortable"
               :disabled="!sourceTable"
             ></v-select>
-          </v-col>          <v-col cols="12" sm="6">
+          </v-col>
+          <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.sourceAttribute"
-              :items="sourceAttributes.map((a) => a.qualified_name || a.name)"
               label="Atributo da Tabela Origem"
               variant="outlined"
               density="comfortable"
-              :disabled="!sourceTable"
+              :disabled="true"
             ></v-select>
-            <div v-if="suggestedJoinColumns.length > 0" class="text-caption text-info mt-1">
-              Sugestão: {{ suggestedJoinColumns[0].source }}
-            </div>
-          </v-col>          <v-col cols="12" sm="6">
+          </v-col>
+          <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.targetAttribute"
-              :items="targetAttributes.map((a) => `${newJoin.targetTable}.${a.name}`)"
               label="Atributo da Tabela Alvo"
               variant="outlined"
               density="comfortable"
-              :disabled="!newJoin.targetTable"
+              :disabled="true"
             ></v-select>
-            <div v-if="suggestedJoinColumns.length > 0" class="text-caption text-info mt-1">
-              Sugestão: {{ newJoin.targetTable }}.{{ suggestedJoinColumns[0].target }}
-            </div>
           </v-col>
         </v-row>
         <v-btn
@@ -204,7 +210,8 @@ const fetchJoinSuggestions = async (targetTable: string) => {
           <v-list-item v-for="(join, index) in joins" :key="index">
             <template v-slot:prepend>
               <v-icon>mdi-link-variant</v-icon>
-            </template>            <v-list-item-title>
+            </template>
+            <v-list-item-title>
               {{ join.sourceAttribute }} {{ join.joinType }}
               {{ join.targetAttribute }}
             </v-list-item-title>

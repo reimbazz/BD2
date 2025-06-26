@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch } from "vue";
 
 interface Attribute {
   name: string;
@@ -14,88 +14,103 @@ interface AggregateFunction {
   alias: string;
 }
 
-const emit = defineEmits(['update:groupByAttributes', 'update:aggregateFunctions']);
+const emit = defineEmits([
+  "update:groupByAttributes",
+  "update:aggregateFunctions",
+]);
 
 const props = defineProps({
   attributes: {
     type: Array as () => Attribute[],
-    default: () => []
+    default: () => [],
   },
   allAvailableAttributes: {
     type: Array as () => Attribute[],
-    default: () => []
+    default: () => [],
   },
   groupByAttributes: {
     type: Array as () => string[],
-    default: () => []
+    default: () => [],
   },
   aggregateFunctions: {
     type: Array as () => AggregateFunction[],
-    default: () => []
-  }
+    default: () => [],
+  },
 });
 
 const groupByAttributesLocal = ref<string[]>(props.groupByAttributes);
-const aggregateFunctionsLocal = ref<AggregateFunction[]>(props.aggregateFunctions);
+const aggregateFunctionsLocal = ref<AggregateFunction[]>(
+  props.aggregateFunctions
+);
 const newAggregate = ref<AggregateFunction>({
-  function: 'COUNT',
-  attribute: '',
-  alias: ''
+  function: "COUNT",
+  attribute: "",
+  alias: "",
 });
 
-watch(() => newAggregate.value.attribute, (newAttr) => {
-  if (newAttr) {
-    newAggregate.value.function = 'COUNT';
+watch(
+  () => newAggregate.value.attribute,
+  (newAttr) => {
+    if (newAttr) {
+      newAggregate.value.function = "COUNT";
+    }
   }
-});
+);
 
-const aggregateFunctionOptions = [
-  'COUNT',
-  'SUM',
-  'AVG',
-  'MIN',
-  'MAX'
-];
+const aggregateFunctionOptions = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
 
 const aggregateFunctionMap: Record<string, string[]> = {
-    number: ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'],
-    string: ['COUNT']
-}
+  number: ["COUNT", "SUM", "AVG", "MIN", "MAX"],
+  string: ["COUNT"],
+};
 
 watch(groupByAttributesLocal, (newValue) => {
-  emit('update:groupByAttributes', newValue);
+  emit("update:groupByAttributes", newValue);
 });
 
-watch(aggregateFunctionsLocal, (newValue) => {
-  // Emitir as funções de agregação diretamente, sem converter
-  emit('update:aggregateFunctions', newValue);
-}, { deep: true });
+watch(
+  aggregateFunctionsLocal,
+  (newValue) => {
+    // Emitir as funções de agregação diretamente, sem converter
+    emit("update:aggregateFunctions", newValue);
+  },
+  { deep: true }
+);
 
-watch(() => props.groupByAttributes, (newValue) => {
+watch(
+  () => props.groupByAttributes,
+  (newValue) => {
     groupByAttributesLocal.value = newValue;
-});
+  }
+);
 
-watch(() => props.aggregateFunctions, (newValue)=> {
+watch(
+  () => props.aggregateFunctions,
+  (newValue) => {
     aggregateFunctionsLocal.value = newValue;
-}, {deep: true});
+  },
+  { deep: true }
+);
 
 function getAttributeType(attrName: string): string | null {
-    const attr = props.attributes.find(a=> (a.qualified_name || a.name) === attrName);
-    if (!attr) return null;
+  const attr = props.attributes.find(
+    (a) => (a.qualified_name || a.name) === attrName
+  );
+  if (!attr) return null;
 
-    const type = attr.type.toLowerCase();
-    if (['integer', 'bigint', 'double precision'].includes(type)) return 'number';
-    if (['varchar(100)', 'varchar(10)', 'char(3)'].includes(type)) return 'string';
+  const type = attr.type.toLowerCase();
+  if (["integer", "bigint", "double precision"].includes(type)) return "number";
+  if (["varchar(100)", "varchar(10)", "char(3)"].includes(type))
+    return "string";
 
-    return null;
+  return null;
 }
 
 const availableFunctions = computed(() => {
-    const type = getAttributeType(newAggregate.value.attribute);
-    if (!type) return aggregateFunctionOptions;
-    return aggregateFunctionMap[type] || ['COUNT'];
+  const type = getAttributeType(newAggregate.value.attribute);
+  if (!type) return aggregateFunctionOptions;
+  return aggregateFunctionMap[type] || ["COUNT"];
 });
-
 
 const addAggregateFunction = () => {
   if (newAggregate.value.function && newAggregate.value.attribute) {
@@ -103,14 +118,14 @@ const addAggregateFunction = () => {
     if (!newAggregate.value.alias) {
       newAggregate.value.alias = `${newAggregate.value.function}_${newAggregate.value.attribute}`;
     }
-    
+
     aggregateFunctionsLocal.value.push({ ...newAggregate.value });
-    
+
     // Reset
     newAggregate.value = {
-      function: 'COUNT',
-      attribute: '',
-      alias: ''
+      function: "COUNT",
+      attribute: "",
+      alias: "",
     };
   }
 };
@@ -126,9 +141,10 @@ const removeAggregateFunction = (index: number) => {
       <v-icon start>mdi-group</v-icon>
       Agrupar Por
     </v-card-title>
-    <v-card-text>      <v-select
+    <v-card-text class="pa-4">
+      <v-select
         v-model="groupByAttributesLocal"
-        :items="attributes.map(attr => attr.qualified_name || attr.name)"
+        :items="attributes.map((attr) => attr.qualified_name || attr.name)"
         label="Atributos para agrupar"
         variant="outlined"
         density="comfortable"
@@ -146,7 +162,8 @@ const removeAggregateFunction = (index: number) => {
       <div class="text-subtitle-1 mb-2">Funções de Agregação</div>
 
       <v-form @submit.prevent="addAggregateFunction">
-        <v-row>          <v-col cols="12" sm="4">
+        <v-row>
+          <v-col cols="12" sm="4">
             <v-select
               v-model="newAggregate.function"
               :items="availableFunctions"
@@ -155,9 +172,14 @@ const removeAggregateFunction = (index: number) => {
               density="comfortable"
             ></v-select>
           </v-col>
-          <v-col cols="12" sm="4">            <v-select
+          <v-col cols="12" sm="4">
+            <v-select
               v-model="newAggregate.attribute"
-              :items="allAvailableAttributes.map(attr => attr.qualified_name || attr.name)"
+              :items="
+                allAvailableAttributes.map(
+                  (attr) => attr.qualified_name || attr.name
+                )
+              "
               label="Atributo"
               variant="outlined"
               density="comfortable"
@@ -173,7 +195,8 @@ const removeAggregateFunction = (index: number) => {
               placeholder="Nome personalizado"
             ></v-text-field>
           </v-col>
-        </v-row>        <v-btn
+        </v-row>
+        <v-btn
           color="primary"
           @click="addAggregateFunction"
           :disabled="!newAggregate.function || !newAggregate.attribute"
@@ -184,12 +207,21 @@ const removeAggregateFunction = (index: number) => {
 
       <div v-if="aggregateFunctionsLocal.length > 0" class="mt-4">
         <v-list density="compact">
-          <v-list-item v-for="(func, index) in aggregateFunctionsLocal" :key="index">            <v-list-item-title>
+          <v-list-item
+            v-for="(func, index) in aggregateFunctionsLocal"
+            :key="index"
+          >
+            <v-list-item-title>
               {{ func.function }}({{ func.attribute }})
               <span v-if="func.alias">AS {{ func.alias }}</span>
             </v-list-item-title>
             <template v-slot:append>
-              <v-btn icon="mdi-delete" variant="text" density="compact" @click="removeAggregateFunction(index)"></v-btn>
+              <v-btn
+                icon="mdi-delete"
+                variant="text"
+                density="compact"
+                @click="removeAggregateFunction(index)"
+              ></v-btn>
             </template>
           </v-list-item>
         </v-list>
