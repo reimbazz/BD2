@@ -6,6 +6,7 @@ import AttributeSelector from "./AttributeSelector.vue";
 import JoinTables from "./JoinTables.vue";
 import GroupBy from "./GroupBy.vue";
 import OrderBy from "./OrderBy.vue";
+import Filters from "./Filters.vue";
 import ReportViewer from "./ReportViewer.vue";
 
 // Estado da aplicação
@@ -18,6 +19,7 @@ const joins = ref<any[]>([]);
 const groupByAttributes = ref<string[]>([]);
 const aggregateFunctions = ref<any[]>([]);
 const orderByColumns = ref<any[]>([]);
+const filters = ref<any[]>([]);
 const reportData = ref<any[]>([]);
 const isLoading = ref<boolean>(false);
 const error = ref<string>("");
@@ -203,7 +205,7 @@ const generateReport = async () => {
       groupByAttributes: groupByAttributes.value,
       aggregateFunctions: aggregateFunctions.value,
       orderByColumns: orderByColumns.value,
-      filters: [], // Implementar filtros posteriormente
+      filters: filters.value,
       limit: 1000
     };
     
@@ -243,6 +245,7 @@ const clearAll = () => {
   groupByAttributes.value = [];
   aggregateFunctions.value = [];
   orderByColumns.value = [];
+  filters.value = [];
   reportData.value = [];
   error.value = "";
   sqlQuery.value = "";
@@ -296,6 +299,15 @@ const clearAll = () => {
           :groupByAttributes="groupByAttributes"
           :aggregateFunctions="aggregateFunctions"
           v-model:orderByColumns="orderByColumns"
+        />
+      </v-col>
+    </v-row>
+
+    <v-row>
+      <v-col cols="12">
+        <Filters
+          v-model="filters"
+          :availableAttributes="attributes"
         />
       </v-col>
     </v-row>
