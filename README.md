@@ -129,7 +129,6 @@ BD/
 **Função**: Interface para configurar joins entre tabelas
 **Lógica**:
 - Busca automaticamente relacionamentos possíveis via foreign keys
-- Permite configuração manual de joins complexos
 - Valida a integridade dos relacionamentos configurados
 - Suporta joins transitivos (através de tabelas intermediárias)
 - Atualiza atributos disponíveis conforme joins são adicionados
