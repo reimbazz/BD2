@@ -1,6 +1,5 @@
 from typing import List, Dict, Any, Tuple
-from sqlalchemy import inspect, select, func, and_, desc, asc
-from sqlalchemy.orm import Session
+from sqlalchemy import inspect, select, func, and_, desc, asc, extract
 from .database import get_engine, SessionLocal
 import models.models as models_module
 
@@ -8,10 +7,64 @@ class ConsultaDAO:
     def __init__(self):
         self.engine = get_engine()
 
+    def _apply_function_to_column(self, column_obj, function_name: str):
+        """
+        Aplica uma função SQL à coluna especificada
+        
+        Args:
+            column_obj: Objeto de coluna SQLAlchemy
+            function_name: Nome da função a ser aplicada
+            
+        Returns:
+            Objeto de coluna com a função aplicada
+        """
+        if not function_name:
+            return column_obj
+            
+        function_name = function_name.upper()
+        
+        # Mapeamento de funções disponíveis
+        function_mapping = {
+            # Funções de texto
+            'UPPER': lambda col: func.upper(col),
+            'LOWER': lambda col: func.lower(col),
+            'LENGTH': lambda col: func.length(col),
+            'TRIM': lambda col: func.trim(col),
+            
+            # Funções numéricas
+            'ABS': lambda col: func.abs(col),
+            'ROUND': lambda col: func.round(col),
+            'CEIL': lambda col: func.ceil(col),
+            'FLOOR': lambda col: func.floor(col),
+            
+            # Funções de data
+            'EXTRACT_YEAR': lambda col: extract('year', col),
+            'EXTRACT_MONTH': lambda col: extract('month', col),
+            'EXTRACT_DAY': lambda col: extract('day', col),
+            'DATE_TRUNC_MONTH': lambda col: func.date_trunc('month', col),
+            'DATE_TRUNC_YEAR': lambda col: func.date_trunc('year', col),
+        }
+        
+        if function_name in function_mapping:
+            return function_mapping[function_name](column_obj)
+        else:
+            # Se a função não for reconhecida, retorna a coluna sem modificação
+            print(f"Função '{function_name}' não reconhecida, ignorando...")
+            return column_obj
+
     def getAllTables(self) -> List[str]:
+        """
+        Retorna todas as tabelas disponíveis no banco de dados
+        
+        Returns:
+            Lista com nomes das tabelas
+        """
         try:
             insp = inspect(self.engine)
-            return insp.get_table_names(schema='public')
+            tables = insp.get_table_names(schema='public')
+            if not tables:
+                print("Nenhuma tabela encontrada no schema 'public'")
+            return tables
         except Exception as e:
             print(f"Erro ao buscar tabelas: {e}")
             raise e
@@ -144,14 +197,20 @@ class ConsultaDAO:
               Returns:
             Tuple com os dados do relatório e a consulta SQL gerada
         """
+        # Validações básicas
+        if not base_table:
+            raise ValueError("Tabela base é obrigatória")
+        
+        if not attributes:
+            raise ValueError("Pelo menos um atributo deve ser selecionado")
+        
+        if limit <= 0:
+            raise ValueError("Limite deve ser maior que zero")
+        
         try:
             with SessionLocal() as session:
                 # Mapear nome da tabela para a classe do modelo ORM correspondente
-                model_classes = {
-                    cls.__tablename__: cls
-                    for cls in [getattr(models_module, cls_name) for cls_name in dir(models_module) 
-                               if not cls_name.startswith('_') and cls_name != 'Base' and hasattr(getattr(models_module, cls_name), '__tablename__')]
-                }
+                model_classes = self._get_model_classes()
                 
                 # Verificar se a tabela base existe no mapeamento
                 if base_table not in model_classes:
@@ -337,6 +396,7 @@ class ConsultaDAO:
                     operator = filter_info.get("operator", "=")
                     attr = filter_info["attribute"]
                     value = filter_info["value"]
+                    filter_function = filter_info.get("function", None)
                     
                     # Obter a coluna para o filtro
                     if "." in attr:
@@ -345,42 +405,13 @@ class ConsultaDAO:
                     else:
                         column_obj = get_column_from_table(base_table, attr)
                     
-                    # Aplicar o operador correto
-                    if operator == "=":
-                        filter_conditions.append(column_obj == value)
-                    elif operator == "!=":
-                        filter_conditions.append(column_obj != value)
-                    elif operator == ">":
-                        filter_conditions.append(column_obj > value)
-                    elif operator == "<":
-                        filter_conditions.append(column_obj < value)
-                    elif operator == ">=":
-                        filter_conditions.append(column_obj >= value)
-                    elif operator == "<=":
-                        filter_conditions.append(column_obj <= value)
-                    elif operator.upper() == "LIKE":
-                        filter_conditions.append(column_obj.like(value))
-                    elif operator.upper() == "ILIKE":
-                        filter_conditions.append(column_obj.ilike(value))
-                    elif operator.upper() == "IN":
-                        if isinstance(value, str):
-                            # Se for string, dividir por vírgulas
-                            values = [v.strip() for v in value.split(",")]
-                            filter_conditions.append(column_obj.in_(values))
-                        elif isinstance(value, list):
-                            filter_conditions.append(column_obj.in_(value))
-                        else:
-                            filter_conditions.append(column_obj.in_([value]))
-                    elif operator.upper() == "NOT IN":
-                        if isinstance(value, str):
-                            values = [v.strip() for v in value.split(",")]
-                            filter_conditions.append(column_obj.notin_(values))
-                        elif isinstance(value, list):
-                            filter_conditions.append(column_obj.notin_(value))
-                        else:
-                            filter_conditions.append(column_obj.notin_([value]))
-                    else:
-                        raise ValueError(f"Operador '{operator}' não suportado")
+                    # Aplicar função se especificada
+                    if filter_function:
+                        column_obj = self._apply_function_to_column(column_obj, filter_function)
+                    
+                    # Aplicar o operador usando o método auxiliar
+                    filter_condition = self._apply_filter_operator(column_obj, operator, value)
+                    filter_conditions.append(filter_condition)
                 
                 # Adicionar as condições de filtro à consulta
                 if filter_conditions:
@@ -389,22 +420,7 @@ class ConsultaDAO:
                 if group_by_attributes:
                     group_by_columns = []
                     for attr in group_by_attributes:
-                        if "." in attr:
-                            table_name, col_name = attr.split(".")
-                            column_obj = get_column_from_table(table_name, col_name)
-                        else:
-                            # Se não tiver qualificação, buscar primeiro entre os aliases definidos
-                            # e depois na tabela base
-                            found = False
-                            for table_name, model in table_aliases.items():
-                                if hasattr(model, attr):
-                                    column_obj = getattr(model, attr)
-                                    found = True
-                                    break
-                            
-                            if not found:
-                                column_obj = get_column_from_table(base_table, attr)
-                                
+                        column_obj = self._get_column_with_qualifier(attr, base_table, table_aliases, get_column_from_table)
                         group_by_columns.append(column_obj)
                     
                     query = query.group_by(*group_by_columns)
@@ -425,21 +441,7 @@ class ConsultaDAO:
                         if not attr:
                             continue
                           # Obter a coluna para ordenação
-                        if "." in attr:
-                            table_name, col_name = attr.split(".")
-                            column_obj = get_column_from_table(table_name, col_name)
-                        else:
-                            # Se não tiver qualificação, buscar primeiro entre os aliases definidos
-                            # e depois na tabela base
-                            found = False
-                            for table_name, model in table_aliases.items():
-                                if hasattr(model, attr):
-                                    column_obj = getattr(model, attr)
-                                    found = True
-                                    break
-                            
-                            if not found:
-                                column_obj = get_column_from_table(base_table, attr)
+                        column_obj = self._get_column_with_qualifier(attr, base_table, table_aliases, get_column_from_table)
                         
                         # Adicionar a direção de ordenação
                         if direction == "DESC":
@@ -466,3 +468,89 @@ class ConsultaDAO:
         except Exception as e:
             print(f"Erro ao gerar relatório adhoc: {e}")
             raise e
+
+    def _get_model_classes(self) -> Dict[str, Any]:
+        """
+        Retorna um dicionário mapeando nomes de tabelas para classes de modelo ORM
+        
+        Returns:
+            Dict com nome da tabela como chave e classe do modelo como valor
+        """
+        return {
+            cls.__tablename__: cls
+            for cls in [getattr(models_module, cls_name) for cls_name in dir(models_module) 
+                       if not cls_name.startswith('_') and cls_name != 'Base' and 
+                       hasattr(getattr(models_module, cls_name), '__tablename__')]
+        }
+
+    def _apply_filter_operator(self, column_obj, operator: str, value: Any) -> Any:
+        """
+        Aplica o operador de filtro à coluna
+        
+        Args:
+            column_obj: Objeto de coluna SQLAlchemy
+            operator: Operador do filtro
+            value: Valor para comparação
+            
+        Returns:
+            Condição de filtro SQLAlchemy
+        """
+        operator = operator.upper()
+        
+        operator_mapping = {
+            "=": lambda col, val: col == val,
+            "!=": lambda col, val: col != val,
+            ">": lambda col, val: col > val,
+            "<": lambda col, val: col < val,
+            ">=": lambda col, val: col >= val,
+            "<=": lambda col, val: col <= val,
+            "LIKE": lambda col, val: col.like(val),
+            "ILIKE": lambda col, val: col.ilike(val),
+        }
+        
+        if operator in operator_mapping:
+            return operator_mapping[operator](column_obj, value)
+        elif operator == "IN":
+            if isinstance(value, str):
+                values = [v.strip() for v in value.split(",")]
+                return column_obj.in_(values)
+            elif isinstance(value, list):
+                return column_obj.in_(value)
+            else:
+                return column_obj.in_([value])
+        elif operator == "NOT IN":
+            if isinstance(value, str):
+                values = [v.strip() for v in value.split(",")]
+                return column_obj.notin_(values)
+            elif isinstance(value, list):
+                return column_obj.notin_(value)
+            else:
+                return column_obj.notin_([value])
+        else:
+            raise ValueError(f"Operador '{operator}' não suportado")
+
+    def _get_column_with_qualifier(self, attr: str, base_table: str, table_aliases: Dict, get_column_from_table) -> Any:
+        """
+        Obtém uma coluna com qualificador de tabela (ex: tabela.coluna)
+        
+        Args:
+            attr: Nome do atributo (pode ter formato tabela.coluna)
+            base_table: Nome da tabela base
+            table_aliases: Dicionário de aliases de tabelas
+            get_column_from_table: Função para obter coluna de uma tabela
+            
+        Returns:
+            Objeto de coluna SQLAlchemy
+        """
+        if "." in attr:
+            table_name, col_name = attr.split(".")
+            return get_column_from_table(table_name, col_name)
+        else:
+            # Se não tiver qualificação, buscar primeiro entre os aliases definidos
+            # e depois na tabela base
+            for table_name, model in table_aliases.items():
+                if hasattr(model, attr):
+                    return getattr(model, attr)
+            
+            # Se não encontrou em nenhuma tabela, usar a tabela base
+            return get_column_from_table(base_table, attr)

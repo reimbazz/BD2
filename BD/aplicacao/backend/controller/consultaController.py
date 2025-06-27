@@ -26,6 +26,12 @@ class OrderByColumn(BaseModel):
     column: str = None
     direction: str
 
+class FilterCondition(BaseModel):
+    attribute: str
+    operator: str
+    value: Any
+    function: Optional[str] = None
+
 class ReportRequest(BaseModel):
     baseTable: str
     attributes: List[str]
@@ -33,7 +39,7 @@ class ReportRequest(BaseModel):
     groupByAttributes: List[str] = []
     aggregateFunctions: List[AggregateFunction] = []
     orderByColumns: List[OrderByColumn] = []
-    filters: List[Dict[str, Any]] = []
+    filters: List[FilterCondition] = []
     limit: Optional[int] = 1000
 
 @router.get("/tables")
@@ -100,6 +106,9 @@ async def generate_report(request: ReportRequest):
                     order_dict['attribute'] = order_dict['column']
                 order_by_dict.append(order_dict)
         
+        # Converter filtros para dicionários
+        filters_dict = [filter_obj.model_dump() for filter_obj in request.filters] if request.filters else []
+        
         result, sql_query = consulta_dao.generateAdhocReport(
             request.baseTable,
             request.attributes,
@@ -107,7 +116,7 @@ async def generate_report(request: ReportRequest):
             request.groupByAttributes,
             agg_functions_dict,
             order_by_dict,
-            request.filters,
+            filters_dict,
             request.limit
         )
         return {"data": result, "sql": sql_query}
@@ -116,3 +125,32 @@ async def generate_report(request: ReportRequest):
         error_detail = f"Erro ao gerar relatório: {str(e)}\n{traceback.format_exc()}"
         print(error_detail)
         raise HTTPException(status_code=500, detail=error_detail)
+
+@router.get("/functions/available")
+async def get_available_functions():
+    """Retorna as funções disponíveis por tipo de dados"""
+    try:
+        functions_by_type = {
+            "text": [
+                {"value": "UPPER", "label": "Maiúsculo (UPPER)"},
+                {"value": "LOWER", "label": "Minúsculo (LOWER)"},
+                {"value": "LENGTH", "label": "Comprimento (LENGTH)"},
+                {"value": "TRIM", "label": "Remover espaços (TRIM)"}
+            ],
+            "numeric": [
+                {"value": "ABS", "label": "Valor absoluto (ABS)"},
+                {"value": "ROUND", "label": "Arredondar (ROUND)"},
+                {"value": "CEIL", "label": "Teto (CEIL)"},
+                {"value": "FLOOR", "label": "Piso (FLOOR)"}
+            ],
+            "date": [
+                {"value": "EXTRACT_YEAR", "label": "Extrair ano"},
+                {"value": "EXTRACT_MONTH", "label": "Extrair mês"},
+                {"value": "EXTRACT_DAY", "label": "Extrair dia"},
+                {"value": "DATE_TRUNC_MONTH", "label": "Truncar para mês"},
+                {"value": "DATE_TRUNC_YEAR", "label": "Truncar para ano"}
+            ]
+        }
+        return {"functions": functions_by_type}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar funções disponíveis: {str(e)}")
