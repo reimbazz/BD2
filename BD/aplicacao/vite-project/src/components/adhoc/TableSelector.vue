@@ -1,25 +1,30 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 
-const emit = defineEmits(['update:selectedTable']);
+interface Props {
+  tables: string[];
+  selectedTable: string;
+}
 
-const props = defineProps({
-  tables: {
-    type: Array as () => string[],
-    default: () => []
-  },
-  selectedTable: {
-    type: String,
-    default: ''
-  }
+interface Emits {
+  (e: 'update:selectedTable', value: string): void;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  tables: () => [],
+  selectedTable: ''
 });
+
+const emit = defineEmits<Emits>();
 
 const selectedTableLocal = ref(props.selectedTable);
 
+// Observa mudanças locais e emite para o componente pai
 watch(selectedTableLocal, (newValue) => {
   emit('update:selectedTable', newValue);
 });
 
+// Observa mudanças do componente pai e atualiza localmente
 watch(() => props.selectedTable, (newValue) => {
   selectedTableLocal.value = newValue;
 });
@@ -38,11 +43,9 @@ watch(() => props.selectedTable, (newValue) => {
         label="Selecione uma tabela"
         variant="outlined"
         density="comfortable"
-        item-title="text"
-        item-value="value"
-        return-object
         :disabled="tables.length === 0"
         class="mt-2"
+        clearable
       >
         <template v-slot:no-data>
           <div class="pa-2">Nenhuma tabela disponível</div>

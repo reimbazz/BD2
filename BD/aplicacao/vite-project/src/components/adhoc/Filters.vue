@@ -12,7 +12,25 @@
           :key="index" 
           class="filter-item mb-3"
           variant="outlined"
+          :color="isFilterValid(filter) ? 'success' : 'warning'"
+          :class="{ 'border-opacity-50': !isFilterValid(filter) }"
         >
+          <!-- Seletor de lógica (AND/OR) para filtros após o primeiro -->
+          <v-card-text v-if="index > 0" class="py-2">
+            <v-row justify="center">
+              <v-col cols="auto">
+                <v-chip-group
+                  v-model="filter.logic"
+                  mandatory
+                  @update:model-value="onLogicChange(index, $event)"
+                >
+                  <v-chip value="AND" color="primary" variant="outlined">E (AND)</v-chip>
+                  <v-chip value="OR" color="secondary" variant="outlined">OU (OR)</v-chip>
+                </v-chip-group>
+              </v-col>
+            </v-row>
+          </v-card-text>
+          
           <v-card-text>
             <v-row align="center" class="filter-row">
               <!-- Seletor de atributo -->
@@ -48,7 +66,7 @@
               <!-- Campo de valor -->
               <v-col cols="12" md="3">
                 <v-text-field
-                  v-if="!isListOperator(filter.operator) && !isDateType(filter.attribute)"
+                  v-if="!FilterUtils.isListOperator(filter.operator) && !isDateType(filter.attribute)"
                   v-model="filter.value"
                   :type="getInputType(filter.attribute)"
                   :label="getPlaceholder(filter.operator)"
@@ -57,7 +75,7 @@
                 />
                 
                 <v-text-field
-                  v-else-if="isListOperator(filter.operator)"
+                  v-else-if="FilterUtils.isListOperator(filter.operator)"
                   v-model="filter.value"
                   label="Valores separados por vírgula"
                   placeholder="valor1, valor2, valor3..."
@@ -122,7 +140,23 @@
         variant="tonal"
         class="mt-4"
       >
+        <template v-slot:prepend>
+          <v-icon>mdi-information</v-icon>
+        </template>
         Selecione uma tabela base para começar a adicionar filtros.
+      </v-alert>
+
+      <!-- Resumo dos filtros aplicados -->
+      <v-alert
+        v-if="modelValue.length > 0"
+        type="success"
+        variant="tonal"
+        class="mt-4"
+      >
+        <template v-slot:prepend>
+          <v-icon>mdi-check-circle</v-icon>
+        </template>
+        <strong>{{ modelValue.length }}</strong> filtro(s) aplicado(s)
       </v-alert>
     </v-card-text>
   </v-card>
@@ -130,107 +164,51 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { AttributeUtils, FilterUtils } from '../../utils';
+import type { Attribute, Filter } from '../../types';
 
-// Interface para os filtros
-interface Filter {
-  attribute: string;
-  operator: string;
-  value: any;
-  function?: string;
+interface Props {
+  modelValue: Filter[];
+  availableAttributes: Attribute[];
 }
 
-// Props
-const props = defineProps<{
-  modelValue: Filter[];
-  availableAttributes: Array<{ 
-    name: string; 
-    type: string; 
-    table?: string; 
-    qualified_name?: string;
-  }>;
-}>();
+interface Emits {
+  (e: 'update:modelValue', filters: Filter[]): void;
+}
 
-// Emits
-const emit = defineEmits<{
-  'update:modelValue': [filters: Filter[]];
-}>();
+const props = withDefaults(defineProps<Props>(), {
+  modelValue: () => [],
+  availableAttributes: () => []
+});
+
+const emit = defineEmits<Emits>();
 
 // Computed para formatar os atributos para o v-select
 const availableAttributeItems = computed(() => {
-  return props.availableAttributes.map(attr => ({
-    title: attr.qualified_name || attr.name,
-    value: attr.qualified_name || attr.name,
-    type: attr.type,
-    table: attr.table
-  }));
+  return AttributeUtils.mapToSelectItems(props.availableAttributes);
 });
 
-// Operadores disponíveis baseados no tipo de dados
+/**
+ * Obtém operadores disponíveis baseado no tipo de dados do atributo
+ */
 const getAvailableOperators = (attribute: string) => {
   const attrInfo = props.availableAttributes.find(
-    attr => (attr.qualified_name || attr.name) === attribute
+    attr => AttributeUtils.getQualifiedName(attr) === attribute
   );
   
   if (!attrInfo) {
-    return [
-      { title: 'Igual (=)', value: '=' },
-      { title: 'Diferente (≠)', value: '!=' }
-    ];
-  }
-
-  const type = attrInfo.type.toLowerCase();
-  
-  // Operadores para tipos numéricos
-  if (type.includes('int') || type.includes('float') || type.includes('decimal') || type.includes('numeric')) {
-    return [
-      { title: 'Igual (=)', value: '=' },
-      { title: 'Diferente (≠)', value: '!=' },
-      { title: 'Maior que (>)', value: '>' },
-      { title: 'Menor que (<)', value: '<' },
-      { title: 'Maior ou igual (≥)', value: '>=' },
-      { title: 'Menor ou igual (≤)', value: '<=' },
-      { title: 'Em lista (IN)', value: 'IN' },
-      { title: 'Não em lista (NOT IN)', value: 'NOT IN' }
-    ];
+    return FilterUtils.getAvailableOperators('');
   }
   
-  // Operadores para tipos de texto
-  if (type.includes('char') || type.includes('text') || type.includes('varchar')) {
-    return [
-      { title: 'Igual (=)', value: '=' },
-      { title: 'Diferente (≠)', value: '!=' },
-      { title: 'Como (LIKE)', value: 'LIKE' },
-      { title: 'Como (sem case)', value: 'ILIKE' },
-      { title: 'Em lista (IN)', value: 'IN' },
-      { title: 'Não em lista (NOT IN)', value: 'NOT IN' }
-    ];
-  }
-
-  // Operadores para tipos de data
-  if (type.includes('date') || type.includes('time')) {
-    return [
-      { title: 'Igual (=)', value: '=' },
-      { title: 'Diferente (≠)', value: '!=' },
-      { title: 'Depois de (>)', value: '>' },
-      { title: 'Antes de (<)', value: '<' },
-      { title: 'A partir de (≥)', value: '>=' },
-      { title: 'Até (≤)', value: '<=' }
-    ];
-  }
-
-  // Operadores padrão
-  return [
-    { title: 'Igual (=)', value: '=' },
-    { title: 'Diferente (≠)', value: '!=' },
-    { title: 'Em lista (IN)', value: 'IN' },
-    { title: 'Não em lista (NOT IN)', value: 'NOT IN' }
-  ];
+  return FilterUtils.getAvailableOperators(attrInfo.type);
 };
 
-// Funções disponíveis baseadas no tipo de dados
+/**
+ * Obtém funções disponíveis baseado no tipo de dados do atributo
+ */
 const getAvailableFunctions = (attribute: string) => {
   const attrInfo = props.availableAttributes.find(
-    attr => (attr.qualified_name || attr.name) === attribute
+    attr => AttributeUtils.getQualifiedName(attr) === attribute
   );
   
   if (!attrInfo) return [];
@@ -238,7 +216,7 @@ const getAvailableFunctions = (attribute: string) => {
   const type = attrInfo.type.toLowerCase();
   
   // Funções para tipos de texto
-  if (type.includes('char') || type.includes('text') || type.includes('varchar')) {
+  if (FilterUtils.isTextType(type)) {
     return [
       { value: 'UPPER', label: 'Maiúsculo (UPPER)' },
       { value: 'LOWER', label: 'Minúsculo (LOWER)' },
@@ -248,7 +226,7 @@ const getAvailableFunctions = (attribute: string) => {
   }
 
   // Funções para tipos numéricos
-  if (type.includes('int') || type.includes('float') || type.includes('decimal') || type.includes('numeric')) {
+  if (FilterUtils.isNumericType(type)) {
     return [
       { value: 'ABS', label: 'Valor absoluto (ABS)' },
       { value: 'ROUND', label: 'Arredondar (ROUND)' },
@@ -258,7 +236,7 @@ const getAvailableFunctions = (attribute: string) => {
   }
 
   // Funções para tipos de data
-  if (type.includes('date') || type.includes('time')) {
+  if (FilterUtils.isDateType(type)) {
     return [
       { value: 'EXTRACT_YEAR', label: 'Extrair ano' },
       { value: 'EXTRACT_MONTH', label: 'Extrair mês' },
@@ -271,7 +249,9 @@ const getAvailableFunctions = (attribute: string) => {
   return [];
 };
 
-// Computed para formatar as funções para o v-select
+/**
+ * Computed para formatar as funções para o v-select
+ */
 const getAvailableFunctionItems = (attribute: string) => {
   return getAvailableFunctions(attribute).map(func => ({
     title: func.label,
@@ -279,68 +259,55 @@ const getAvailableFunctionItems = (attribute: string) => {
   }));
 };
 
-// Verificar se o atributo pode ter função
-const canHaveFunction = (attribute: string) => {
+/**
+ * Verifica se o atributo pode ter função
+ */
+const canHaveFunction = (attribute: string): boolean => {
   return getAvailableFunctions(attribute).length > 0;
 };
 
-// Verificar se é operador de lista
-const isListOperator = (operator: string) => {
-  return ['IN', 'NOT IN'].includes(operator);
-};
-
-// Verificar se é tipo de data
-const isDateType = (attribute: string) => {
+/**
+ * Verifica se é um tipo de data
+ */
+const isDateType = (attribute: string): boolean => {
   const attrInfo = props.availableAttributes.find(
-    attr => (attr.qualified_name || attr.name) === attribute
+    attr => AttributeUtils.getQualifiedName(attr) === attribute
   );
   
   if (!attrInfo) return false;
   
-  const type = attrInfo.type.toLowerCase();
-  return type.includes('date') || type.includes('time');
+  return FilterUtils.isDateType(attrInfo.type);
 };
 
-// Obter tipo de input
-const getInputType = (attribute: string) => {
+/**
+ * Obtém o tipo de input baseado no tipo de dados
+ */
+const getInputType = (attribute: string): string => {
   const attrInfo = props.availableAttributes.find(
-    attr => (attr.qualified_name || attr.name) === attribute
+    attr => AttributeUtils.getQualifiedName(attr) === attribute
   );
   
   if (!attrInfo) return 'text';
   
-  const type = attrInfo.type.toLowerCase();
-  
-  if (type.includes('int') || type.includes('float') || type.includes('decimal') || type.includes('numeric')) {
-    return 'number';
-  }
-  
-  if (type.includes('date')) {
-    return 'date';
-  }
-  
-  return 'text';
+  return FilterUtils.getInputType(attrInfo.type);
 };
 
-// Obter placeholder
-const getPlaceholder = (operator: string) => {
-  if (operator === 'LIKE' || operator === 'ILIKE') {
-    return 'Use % para wildcards (ex: %texto%)';
-  }
-  
-  if (isListOperator(operator)) {
-    return 'valor1, valor2, valor3...';
-  }
-  
-  return 'Digite o valor';
+/**
+ * Obtém placeholder apropriado para o operador
+ */
+const getPlaceholder = (operator: string): string => {
+  return FilterUtils.getPlaceholder(operator);
 };
 
-// Adicionar novo filtro
-const addFilter = () => {
+/**
+ * Adiciona novo filtro
+ */
+const addFilter = (): void => {
   const newFilter: Filter = {
     attribute: '',
     operator: '=',
     value: '',
+    logic: 'AND',
     function: ''
   };
   
@@ -348,14 +315,18 @@ const addFilter = () => {
   emit('update:modelValue', newFilters);
 };
 
-// Remover filtro
-const removeFilter = (index: number) => {
+/**
+ * Remove filtro
+ */
+const removeFilter = (index: number): void => {
   const newFilters = props.modelValue.filter((_, i) => i !== index);
   emit('update:modelValue', newFilters);
 };
 
-// Quando o atributo muda, resetar operador e valor
-const onAttributeChange = (index: number, newValue: string) => {
+/**
+ * Quando o atributo muda, resetar operador e valor
+ */
+const onAttributeChange = (index: number, newValue: string): void => {
   const newFilters = [...props.modelValue];
   newFilters[index] = {
     ...newFilters[index],
@@ -365,5 +336,24 @@ const onAttributeChange = (index: number, newValue: string) => {
     function: ''
   };
   emit('update:modelValue', newFilters);
+};
+
+/**
+ * Quando a lógica muda (AND/OR)
+ */
+const onLogicChange = (index: number, newLogic: 'AND' | 'OR'): void => {
+  const newFilters = [...props.modelValue];
+  newFilters[index] = {
+    ...newFilters[index],
+    logic: newLogic
+  };
+  emit('update:modelValue', newFilters);
+};
+
+/**
+ * Verifica se um filtro está válido
+ */
+const isFilterValid = (filter: Filter): boolean => {
+  return !!(filter.attribute && filter.operator && filter.value);
 };
 </script>

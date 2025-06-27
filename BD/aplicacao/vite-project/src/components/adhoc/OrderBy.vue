@@ -1,107 +1,74 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
+import type { Attribute, OrderBy, AggregateFunction } from '../../types';
+import { AttributeUtils, OrderByUtils } from '../../utils';
 
-interface Attribute {
-  name: string;
-  type: string;
-  table?: string;
-  qualified_name?: string;
-}
+const emit = defineEmits<{
+  'update:orderByColumns': [value: any[]];
+}>();
 
-interface OrderBy {
-  attribute: string;
-  direction: 'ASC' | 'DESC';
-}
-
-interface AggregateFunction {
-  function: string;
-  attribute: string;
-  alias: string;
-}
-
-const emit = defineEmits(['update:orderByColumns']);
-
-const props = defineProps({
-  attributes: {
-    type: Array as () => Attribute[],
-    default: () => []
-  },
-  groupByAttributes: {
-    type: Array as () => string[],
-    default: () => []
-  },
-  aggregateFunctions: {
-    type: Array as () => AggregateFunction[],
-    default: () => []
-  },
-  orderByColumns: {
-    type: Array as () => OrderBy[],
-    default: () => []
-  }
-});
+const props = defineProps<{
+  attributes: Attribute[];
+  groupByAttributes: string[];
+  aggregateFunctions: AggregateFunction[];
+  orderByColumns: OrderBy[];
+}>();
 
 const orderByColumnsLocal = ref<OrderBy[]>(props.orderByColumns);
-const newOrderBy = ref<OrderBy>({
-  attribute: '',
-  direction: 'ASC'
-});
+const newOrderBy = ref<OrderBy>(OrderByUtils.createDefault());
 
+// Computed para atributos disponíveis
 const availableAttributes = computed(() => {
-  const selectedAttrs = props.attributes.map(attr => attr.qualified_name || attr.name);
-
+  const selectedAttrs = props.attributes.map(attr => 
+    AttributeUtils.getQualifiedName(attr)
+  );
+  
   const groupByAttrs = props.groupByAttributes;
-
   const aggregateAliases = props.aggregateFunctions
     .map(func => func.alias)
     .filter(alias => alias);
 
-  const combinedAttributes = new Set([...selectedAttrs, ...groupByAttrs, ...aggregateAliases]);
-
-  return Array.from(combinedAttributes);
+  return [...new Set([...selectedAttrs, ...groupByAttrs, ...aggregateAliases])];
 });
 
+// Watchers para sincronização
 watch(() => props.orderByColumns, (newOrdersFromParent) => {
-    if (newOrdersFromParent.length > 0 && 'column' in newOrdersFromParent[0]) {
-        orderByColumnsLocal.value = newOrdersFromParent.map((order: any) => ({
-            attribute: order.column,
-            direction: order.direction
-        }));
-    } else {
-        orderByColumnsLocal.value = newOrdersFromParent;
-    }
-}, {deep: true});
+  if (newOrdersFromParent.length > 0 && 'column' in newOrdersFromParent[0]) {
+    orderByColumnsLocal.value = newOrdersFromParent.map((order: any) => ({
+      attribute: order.column,
+      direction: order.direction
+    }));
+  } else {
+    orderByColumnsLocal.value = newOrdersFromParent;
+  }
+}, { deep: true });
 
-watch (() => props.attributes, (newAvailableAttributes) => {
-    if(newOrderBy.value.attribute) {
-        const isStillAvailable = newAvailableAttributes.some(
-            attr => (attr.qualified_name || attr.name) === newOrderBy.value.attribute
-        );
+watch(() => props.attributes, (newAvailableAttributes) => {
+  if (newOrderBy.value.attribute) {
+    const isStillAvailable = newAvailableAttributes.some(
+      attr => AttributeUtils.getQualifiedName(attr) === newOrderBy.value.attribute
+    );
 
-        if(!isStillAvailable) {
-            newOrderBy.value.attribute = '';
-        }
+    if (!isStillAvailable) {
+      newOrderBy.value.attribute = '';
     }
-}, {deep: true});
+  }
+}, { deep: true });
 
 watch(orderByColumnsLocal, (newValue, oldValue) => {
-  const newConvertedValue = newValue.map(order => convertOrderFormat(order));
-  
-  const oldConvertedValue = oldValue ? oldValue.map(order => convertOrderFormat(order)) : [];
+  const newConvertedValue = newValue.map(order => OrderByUtils.convertFormat(order));
+  const oldConvertedValue = oldValue ? oldValue.map(order => OrderByUtils.convertFormat(order)) : [];
 
   if (JSON.stringify(newConvertedValue) !== JSON.stringify(oldConvertedValue)) {
     emit('update:orderByColumns', newConvertedValue);
   }
 }, { deep: true });
 
+// Métodos
 const addOrderBy = () => {
   if (newOrderBy.value.attribute) {
     orderByColumnsLocal.value.push({ ...newOrderBy.value });
-    
-    // Reset
-    newOrderBy.value = {
-      attribute: '',
-      direction: 'ASC'
-    };
+    newOrderBy.value = OrderByUtils.createDefault();
   }
 };
 
@@ -123,14 +90,6 @@ const moveDown = (index: number) => {
     orderByColumnsLocal.value[index] = orderByColumnsLocal.value[index + 1];
     orderByColumnsLocal.value[index + 1] = temp;
   }
-};
-
-// Método auxiliar para converter formatos de ordenação
-const convertOrderFormat = (order: OrderBy) => {
-  return {
-    column: order.attribute,
-    direction: order.direction
-  };
 };
 </script>
 

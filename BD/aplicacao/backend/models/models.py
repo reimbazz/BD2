@@ -1,13 +1,64 @@
+"""
+Modelos SQLAlchemy para o sis    country_code: Mapped[str] = mapped_column(CHAR(3), primary_key=True, doc="Código ISO de 3 caracteres")
+    name: Mapped[str] = mapped_column(String(100), doc="Nome completo do país")
+
+    # Relacionamentos com documentação clara
+    borders: Mapped[List['Borders']] = relationship(
+        'Borders', foreign_keys='[Borders.border_country_code]', 
+        back_populates='countries',
+        doc="Países que fazem fronteira com este país"
+    )
+    borders_: Mapped[List['Borders']] = relationship(
+        'Borders', foreign_keys='[Borders.country_code]', 
+        back_populates='borders_',
+        doc="Fronteiras que este país possui"
+    )
+    country_geography: Mapped[List['CountryGeography']] = relationship(
+        'CountryGeography', back_populates='countries',
+        doc="Dados geográficos do país"
+    )
+    country_society: Mapped[List['CountrySociety']] = relationship(
+        'CountrySociety', back_populates='countries',
+        doc="Dados sociais e demográficos do país"
+    )
+    currencies: Mapped[List['Currencies']] = relationship(
+        'Currencies', back_populates='countries',
+        doc="Moedas utilizadas no país"
+    )
+    languages: Mapped[List['Languages']] = relationship(
+        'Languages', back_populates='countries',
+        doc="Idiomas falados no país"
+    )
+    states: Mapped[List['States']] = relationship(
+        'States', back_populates='countries',
+        doc="Estados/províncias do país"
+    )nsultas ADHOC.
+
+Este módulo define todas as entidades do banco de dados usando SQLAlchemy ORM.
+O esquema representa dados geográficos e políticos de países, estados e cidades.
+
+Estrutura hierárquica:
+- Countries (países) -> States (estados) -> Cities (cidades)
+- Relações auxiliares: Borders, Languages, Currencies, Geography, Society
+"""
+
 from typing import List, Optional
 
 from sqlalchemy import BigInteger, CHAR, Double, ForeignKeyConstraint, Integer, PrimaryKeyConstraint, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
+    """Classe base para todos os modelos SQLAlchemy."""
     pass
 
 
 class Countries(Base):
+    """
+    Modelo representando países.
+    
+    Tabela central do sistema que conecta todas as outras entidades.
+    Cada país é identificado por um código de 3 caracteres (ISO).
+    """
     __tablename__ = 'countries'
     __table_args__ = (
         PrimaryKeyConstraint('country_code', name='countries_pkey'),
@@ -27,6 +78,11 @@ class Countries(Base):
 
 
 class Borders(Base):
+    """
+    Modelo representando fronteiras entre países.
+    
+    Tabela de relacionamento que mapeia quais países fazem fronteira entre si.
+    """
     __tablename__ = 'borders'
     __table_args__ = (
         ForeignKeyConstraint(['border_country_code'], ['countries.country_code'], name='borders_border_country_code_fkey'),
@@ -43,6 +99,11 @@ class Borders(Base):
 
 
 class CountryGeography(Base):
+    """
+    Modelo representando dados geográficos dos países.
+    
+    Contém informações como área, região, coordenadas geográficas.
+    """
     __tablename__ = 'country_geography'
     __table_args__ = (
         ForeignKeyConstraint(['country_code'], ['countries.country_code'], name='fk_country_geography'),
@@ -60,6 +121,11 @@ class CountryGeography(Base):
 
 
 class CountrySociety(Base):
+    """
+    Modelo representando dados sociais e demográficos dos países.
+    
+    Contém informações como capital e população.
+    """
     __tablename__ = 'country_society'
     __table_args__ = (
         ForeignKeyConstraint(['country_code'], ['countries.country_code'], name='fk_country_society'),
@@ -75,6 +141,11 @@ class CountrySociety(Base):
 
 
 class Currencies(Base):
+    """
+    Modelo representando moedas utilizadas pelos países.
+    
+    Um país pode ter múltiplas moedas (relação 1:N).
+    """
     __tablename__ = 'currencies'
     __table_args__ = (
         ForeignKeyConstraint(['country_code'], ['countries.country_code'], name='currencies_country_code_fkey'),
@@ -89,6 +160,11 @@ class Currencies(Base):
 
 
 class Languages(Base):
+    """
+    Modelo representando idiomas falados nos países.
+    
+    Um país pode ter múltiplos idiomas oficiais (relação 1:N).
+    """
     __tablename__ = 'languages'
     __table_args__ = (
         ForeignKeyConstraint(['country_code'], ['countries.country_code'], name='languages_country_code_fkey'),
@@ -103,6 +179,11 @@ class Languages(Base):
 
 
 class States(Base):
+    """
+    Modelo representando estados/províncias dentro de países.
+    
+    Nível intermediário na hierarquia: Countries -> States -> Cities
+    """
     __tablename__ = 'states'
     __table_args__ = (
         ForeignKeyConstraint(['country_code'], ['countries.country_code'], name='fk_states_country'),
@@ -119,6 +200,11 @@ class States(Base):
 
 
 class Cities(Base):
+    """
+    Modelo representando cidades dentro de estados.
+    
+    Último nível na hierarquia geográfica do sistema.
+    """
     __tablename__ = 'cities'
     __table_args__ = (
         ForeignKeyConstraint(['state_id'], ['states.state_id'], name='cities_state_id_fkey'),

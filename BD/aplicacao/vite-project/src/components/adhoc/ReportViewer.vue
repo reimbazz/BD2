@@ -1,28 +1,32 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
-const props = defineProps({
-  reportData: {
-    type: Array as () => any[],
-    default: () => []
-  },
-  isLoading: {
-    type: Boolean,
-    default: false
-  },
-  error: {
-    type: String,
-    default: ''
-  }
-});
+interface ReportRow {
+  [key: string]: any;
+}
 
-const headers = ref<any[]>([]);
+interface TableHeader {
+  title: string;
+  key: string;
+  sortable: boolean;
+}
 
+const props = defineProps<{
+  reportData: ReportRow[];
+  isLoading: boolean;
+  error: string;
+}>();
+
+const headers = ref<TableHeader[]>([]);
+
+const hasData = computed(() => props.reportData && props.reportData.length > 0);
+const showNoData = computed(() => !props.isLoading && !props.error && !hasData.value);
+
+// Watcher para atualizar cabeçalhos dinamicamente
 watch(() => props.reportData, (newData) => {
-  if (newData && newData.length > 0) {
-    // Extrair cabeçalhos dinamicamente do primeiro item
+  if (hasData.value) {
     headers.value = Object.keys(newData[0]).map(key => ({
-      title: key,
+      title: formatHeaderTitle(key),
       key: key,
       sortable: true
     }));
@@ -31,39 +35,42 @@ watch(() => props.reportData, (newData) => {
   }
 }, { immediate: true });
 
-const downloadCSV = () => {
-  if (!props.reportData || props.reportData.length === 0) {
-    return;
-  }
+// Métodos de formatação e exportação
+const formatHeaderTitle = (key: string): string => {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+};
 
-  // Criar cabeçalho CSV
-  const csvHeader = headers.value.map(h => `"${h.title}"`).join(',');
-  
-  // Criar linhas CSV
-  const csvRows = props.reportData.map(row => {
-    return headers.value.map(header => {
-      // Escapar aspas e envolver em aspas duplas
-      const value = row[header.key];
-      return `"${String(value).replace(/"/g, '""')}"`;
-    }).join(',');
-  });
-  
-  // Combinar cabeçalho e linhas
-  const csvContent = [csvHeader, ...csvRows].join('\n');
-  
-  // Criar blob e link para download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `relatorio_adhoc_${new Date().toISOString().split('T')[0]}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+const downloadCSV = () => {
+  if (!hasData.value) return;
+
+  try {
+    const csvHeader = headers.value.map(h => `"${h.title}"`).join(',');
+    const csvRows = props.reportData.map(row => {
+      return headers.value.map(header => {
+        const value = row[header.key];
+        return `"${String(value || '').replace(/"/g, '""')}"`;
+      }).join(',');
+    });
+    
+    const csvContent = [csvHeader, ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `relatorio_adhoc_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Erro ao baixar CSV:', error);
+    alert('Erro ao gerar arquivo CSV');
+  }
 };
 
 const exportExcel = () => {
-  // Simulação de exportação para Excel (na implementação real usaria uma biblioteca como SheetJS)
+  // Placeholder para futura implementação com biblioteca como SheetJS
   alert('Exportação para Excel será implementada na próxima versão.');
 };
 
@@ -79,11 +86,11 @@ const printReport = () => {
       Relatório ADHOC
       <v-spacer></v-spacer>
       <v-btn icon="mdi-file-download" variant="text" color="white" @click="downloadCSV" 
-             :disabled="reportData.length === 0"></v-btn>
+             :disabled="!hasData"></v-btn>
       <v-btn icon="mdi-microsoft-excel" variant="text" color="white" @click="exportExcel"
-             :disabled="reportData.length === 0"></v-btn>
+             :disabled="!hasData"></v-btn>
       <v-btn icon="mdi-printer" variant="text" color="white" @click="printReport"
-             :disabled="reportData.length === 0"></v-btn>
+             :disabled="!hasData"></v-btn>
     </v-card-title>
     
     <v-card-text>
@@ -96,14 +103,14 @@ const printReport = () => {
         {{ error }}
       </div>
       
-      <div v-else-if="reportData.length === 0" class="text-center pa-4">
+      <div v-else-if="showNoData" class="text-center pa-4">
         Configure os critérios do relatório e clique em "Gerar Relatório" para visualizar os resultados.
       </div>
       
       <div v-else>
         <v-data-table
           :headers="headers"
-          :items="reportData"
+          :items="props.reportData"
           :items-per-page="10"
           :footer-props="{
             'items-per-page-options': [5, 10, 20, 50, 100],

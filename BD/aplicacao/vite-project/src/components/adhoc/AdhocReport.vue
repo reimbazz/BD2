@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from "vue";
-import axios from "axios";
+import { ApiService } from '../../services/apiService';
+import { AttributeUtils, ValidationUtils } from '../../utils';
+import type { Attribute, Join, AggregateFunction, OrderBy as OrderByType, Filter, ReportRequest, TableRelations } from '../../types';
+
 import TableSelector from "./TableSelector.vue";
 import AttributeSelector from "./AttributeSelector.vue";
 import JoinTables from "./JoinTables.vue";
@@ -11,51 +14,53 @@ import ReportViewer from "./ReportViewer.vue";
 
 // Estado da aplicação
 const tables = ref<string[]>([]);
-const tablesJoin = ref<{ direct: string[], transitive: Record<string, any[]> }>({ direct: [], transitive: {} });
+const tablesJoin = ref<TableRelations>({ direct: [], transitive: {} });
 const selectedTable = ref<string>("");
-const attributes = ref<{ name: string; type: string; table?: string; qualified_name?: string }[]>([]);
+const attributes = ref<Attribute[]>([]);
 const selectedAttributes = ref<string[]>([]);
-const joins = ref<any[]>([]);
+const joins = ref<Join[]>([]);
 const groupByAttributes = ref<string[]>([]);
-const aggregateFunctions = ref<any[]>([]);
-const orderByColumns = ref<any[]>([]);
-const filters = ref<any[]>([]);
+const aggregateFunctions = ref<AggregateFunction[]>([]);
+const orderByColumns = ref<OrderByType[]>([]);
+const filters = ref<Filter[]>([]);
 const reportData = ref<any[]>([]);
 const isLoading = ref<boolean>(false);
 const error = ref<string>("");
 const sqlQuery = ref<string>("");
 const showSql = ref<boolean>(false);
 
-// Carregar tabelas do backend quando o componente for montado
+/**
+ * Carrega tabelas do backend quando o componente for montado
+ */
 onMounted(async () => {
   try {
     isLoading.value = true;
-    // Buscar as tabelas disponíveis na API
-    const response = await axios.get("http://localhost:8000/api/db/tables");
-    console.log("Tabelas carregadas:", response.data.tables);
-    tables.value = response.data.tables;
-    isLoading.value = false;
+    tables.value = await ApiService.getTables();
   } catch (err) {
     console.error("Erro ao carregar tabelas:", err);
-    error.value = "Erro ao carregar tabelas. Tente novamente mais tarde.";
+    error.value = err instanceof Error ? err.message : "Erro ao carregar tabelas. Tente novamente mais tarde.";
+  } finally {
     isLoading.value = false;
   }
 });
 
+/**
+ * Busca atributos de uma tabela específica
+ */
 const fetchTableAttributes = async (tableName: string): Promise<{ name: string; type: string }[]> => {
   try {
-    const response = await axios.get(
-      `http://localhost:8000/api/db/tables/${tableName}/columns`
-    );
-    return response.data.columns;
+    const columns = await ApiService.getTableColumns(tableName);
+    return columns.map(col => ({ name: col.name, type: col.type }));
   } catch (err) {
     console.error(`Erro ao carregar atributos de ${tableName}:`, err);
     return [];
   }
 };
 
-// Função para carregar atributos das tabelas joinadas
-const loadJoinedTablesAttributes = async () => {
+/**
+ * Carrega atributos das tabelas joinadas
+ */
+const loadJoinedTablesAttributes = async (): Promise<void> => {
   if (!selectedTable.value) return;
 
   try {
@@ -63,24 +68,15 @@ const loadJoinedTablesAttributes = async () => {
     
     if (joins.value.length === 0) {
       // Se não há joins, carregar apenas os atributos da tabela principal
-      const response = await axios.get(
-        `http://localhost:8000/api/db/tables/${selectedTable.value}/columns`
-      );
-      attributes.value = response.data.columns.map((col: any) => ({
+      const columns = await ApiService.getTableColumns(selectedTable.value);
+      attributes.value = columns.map(col => ({
         ...col,
         table: selectedTable.value,
         qualified_name: `${selectedTable.value}.${col.name}`
       }));
     } else {
       // Se há joins, carregar atributos de todas as tabelas envolvidas
-      const response = await axios.post(
-        "http://localhost:8000/api/db/tables/joined-columns",
-        {
-          baseTable: selectedTable.value,
-          joins: joins.value
-        }
-      );
-      attributes.value = response.data.columns;
+      attributes.value = await ApiService.getJoinedTablesColumns(selectedTable.value, joins.value);
     }
     
     // Limpar seleções de atributos que não existem mais
@@ -89,183 +85,185 @@ const loadJoinedTablesAttributes = async () => {
         availableAttr.qualified_name === attr || availableAttr.name === attr
       )
     );
-    
-    isLoading.value = false;
   } catch (err) {
     console.error("Erro ao carregar atributos das tabelas joinadas:", err);
-    error.value = "Erro ao carregar atributos. Tente novamente mais tarde.";
+    error.value = err instanceof Error ? err.message : "Erro ao carregar atributos. Tente novamente mais tarde.";
+  } finally {
     isLoading.value = false;
   }
 };
 
-// Carregar atributos quando uma tabela for selecionada
-const loadAttributes = async () => {
+/**
+ * Carrega atributos quando uma tabela for selecionada
+ */
+const loadAttributes = async (): Promise<void> => {
   if (!selectedTable.value) return;
 
   try {
     isLoading.value = true;
     selectedAttributes.value = [];
-    attributes.value = [];
-
-    const response = await axios.get(
-      `http://localhost:8000/api/db/tables/${selectedTable.value}/columns`
-    );
-    attributes.value = response.data.columns.map((col: any) => ({
-      ...col,
-      table: selectedTable.value,
-      qualified_name: `${selectedTable.value}.${col.name}`
-    }));
-
-    isLoading.value = false;
+    
+    const columns = await ApiService.getTableColumns(selectedTable.value);
+    attributes.value = AttributeUtils.addTableQualification(columns, selectedTable.value);
   } catch (err) {
     console.error("Erro ao carregar atributos:", err);
-    error.value = "Erro ao carregar atributos. Tente novamente mais tarde.";
+    error.value = err instanceof Error ? err.message : "Erro ao carregar atributos. Tente novamente mais tarde.";
+  } finally {
     isLoading.value = false;
   }
 };
 
+/**
+ * Computed para atributos filtrados baseado na seleção
+ */
 const filteredAttributes = computed(() => {
-    if(!selectedAttributes.value || selectedAttributes.value.length === 0) {
-        return [];
-    }
+  if (!selectedAttributes.value || selectedAttributes.value.length === 0) {
+    return [];
+  }
 
-    return attributes.value.filter(attr =>
-        selectedAttributes.value.includes(attr.qualified_name || attr.name)
-    );
+  return AttributeUtils.filterAvailableAttributes(attributes.value, selectedAttributes.value);
 });
 
-watch(filteredAttributes, (newAvailableAttrs) =>{
-    const availableNames = newAvailableAttrs.map(a => a.qualified_name || a.name);
+/**
+ * Observa mudanças nos atributos filtrados e limpa dependências
+ */
+watch(filteredAttributes, (newAvailableAttrs) => {
+  const availableNames = newAvailableAttrs.map(attr => AttributeUtils.getQualifiedName(attr));
 
-    groupByAttributes.value = groupByAttributes.value.filter(name => availableNames.includes(name));
+  // Limpar agrupamentos que não estão mais disponíveis
+  groupByAttributes.value = groupByAttributes.value.filter(name => availableNames.includes(name));
 
-    aggregateFunctions.value = aggregateFunctions.value.filter(func => availableNames.includes(func.attribute))
+  // Limpar funções de agregação que não estão mais disponíveis
+  aggregateFunctions.value = aggregateFunctions.value.filter(func => availableNames.includes(func.attribute));
 
-    orderByColumns.value = orderByColumns.value.filter(col => availableNames.includes(col.columns))
-}, {deep: true});
+  // Limpar ordenações que não estão mais disponíveis
+  orderByColumns.value = orderByColumns.value.filter((col: OrderByType) => 
+    availableNames.includes(col.attribute)
+  );
+}, { deep: true });
 
-const loadTablesJoin = async () => {
+/**
+ * Carrega tabelas disponíveis para join
+ */
+const loadTablesJoin = async (): Promise<void> => {
+  if (!selectedTable.value) return;
+
   try {
     isLoading.value = true;
     
     if (joins.value.length === 0) {
       // Se não há joins, usar o endpoint simples
       const usedTables = [selectedTable.value];
-      const usedTablesParam = usedTables.join(',');
-      
-      const response = await axios.get(
-        `http://localhost:8000/api/db/tables/${selectedTable.value}/transitive-relations?used_tables=${usedTablesParam}`
-      );
-      tablesJoin.value = response.data.relations;
+      tablesJoin.value = await ApiService.getTransitiveRelations(selectedTable.value, usedTables);
     } else {
       // Se há joins, usar o endpoint que considera joins existentes
-      const response = await axios.post(
-        `http://localhost:8000/api/db/tables/${selectedTable.value}/transitive-relations-with-joins`,
-        {
-          baseTable: selectedTable.value,
-          joins: joins.value
-        }
-      );
-      tablesJoin.value = response.data.relations;
+      tablesJoin.value = await ApiService.getTransitiveRelationsWithJoins(selectedTable.value, joins.value);
     }
-    
-    isLoading.value = false;
   } catch (err) {
     console.error("Erro ao carregar tabelas para join:", err);
-    error.value =
-      "Erro ao carregar tabelas para join. Tente novamente mais tarde.";
+    error.value = err instanceof Error ? err.message : "Erro ao carregar tabelas para join. Tente novamente mais tarde.";
+  } finally {
     isLoading.value = false;
   }
 };
 
-// Observar mudanças na tabela selecionada
+// Observa mudanças na tabela selecionada
 watch(selectedTable, async (newTable) => {
   if (newTable) {
     // Limpar seleções anteriores quando a tabela mudar
-    joins.value = [];
-    groupByAttributes.value = [];
-    aggregateFunctions.value = [];
-    orderByColumns.value = [];
-    reportData.value = [];
-
-    await loadAttributes();
-    await loadTablesJoin();
+    clearDependentSelections();
+    await Promise.all([loadAttributes(), loadTablesJoin()]);
   } else {
-    attributes.value = [];
-    selectedAttributes.value = [];
+    clearAllSelections();
   }
 });
 
-// Observar mudanças nos joins para atualizar atributos disponíveis
+// Observa mudanças nos joins para atualizar atributos disponíveis
 watch(joins, async () => {
   if (selectedTable.value) {
-    await loadJoinedTablesAttributes();
-    await loadTablesJoin(); // Recarregar tabelas disponíveis após mudança nos joins
+    await Promise.all([loadJoinedTablesAttributes(), loadTablesJoin()]);
   }
 }, { deep: true });
 
-// Função para gerar o relatório
-const generateReport = async () => {
-  if (!selectedTable.value || selectedAttributes.value.length === 0) {
-    error.value = "Selecione uma tabela e pelo menos um atributo.";
+/**
+ * Limpa seleções dependentes
+ */
+const clearDependentSelections = (): void => {
+  joins.value = [];
+  groupByAttributes.value = [];
+  aggregateFunctions.value = [];
+  orderByColumns.value = [];
+  reportData.value = [];
+  error.value = "";
+  sqlQuery.value = "";
+};
+
+/**
+ * Limpa todas as seleções
+ */
+const clearAllSelections = (): void => {
+  attributes.value = [];
+  selectedAttributes.value = [];
+  clearDependentSelections();
+};
+
+/**
+ * Gera o relatório
+ */
+const generateReport = async (): Promise<void> => {
+  // Validar configuração
+  const validation = ValidationUtils.validateReportConfig({
+    selectedTable: selectedTable.value,
+    selectedAttributes: selectedAttributes.value
+  });
+
+  if (!validation.isValid) {
+    error.value = validation.message || "Configuração inválida";
     return;
   }
 
   try {
     isLoading.value = true;
     error.value = "";
-      // Preparar o payload com as configurações do relatório
-    const payload = {
+
+    // Preparar o payload com as configurações do relatório
+    const payload: ReportRequest = {
       baseTable: selectedTable.value,
       attributes: selectedAttributes.value,
       joins: joins.value,
       groupByAttributes: groupByAttributes.value,
       aggregateFunctions: aggregateFunctions.value,
-      orderByColumns: orderByColumns.value,
+      orderByColumns: orderByColumns.value.map(order => ({
+        attribute: order.attribute,
+        direction: order.direction
+      })),
       filters: filters.value,
       limit: 1000
     };
     
-    // Enviar solicitação para o backend
-    const response = await axios.post(
-      "http://localhost:8000/api/db/report",
-      payload
-    );
+    const response = await ApiService.generateReport(payload);
     
     // Atualizar dados e query SQL
-    reportData.value = response.data.data;
-    sqlQuery.value = response.data.sql;
+    reportData.value = response.data;
+    sqlQuery.value = response.sql;
     
     if (reportData.value.length === 0) {
       error.value = "A consulta não retornou resultados.";
     }
-    
-    isLoading.value = false;
   } catch (err) {
     console.error("Erro ao gerar relatório:", err);
-    let errorMessage = "Erro ao gerar relatório.";
-    if (typeof err === "object" && err !== null) {
-      const e = err as { response?: { data?: { detail?: string } }, message?: string };
-      errorMessage += " " + (e.response?.data?.detail || e.message || "");
-    }
-    error.value = errorMessage;
+    error.value = err instanceof Error ? err.message : "Erro ao gerar relatório.";
+  } finally {
     isLoading.value = false;
   }
 };
 
-// Limpar todos os filtros e seleções
-const clearAll = () => {
+/**
+ * Limpa todos os filtros e seleções
+ */
+const clearAll = (): void => {
   selectedTable.value = "";
-  attributes.value = [];
-  selectedAttributes.value = [];
-  joins.value = [];
-  groupByAttributes.value = [];
-  aggregateFunctions.value = [];
-  orderByColumns.value = [];
-  filters.value = [];
-  reportData.value = [];
-  error.value = "";
-  sqlQuery.value = "";
+  clearAllSelections();
 };
 </script>
 

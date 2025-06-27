@@ -1,49 +1,33 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import type { PropType } from "vue";
+import { AttributeUtils, ValidationUtils, FormatUtils } from '../../utils';
+import { ApiService } from '../../services/apiService';
+import { JOIN_TYPES } from '../../types';
+import type { Join, Attribute, TableRelations } from '../../types';
 
-interface Join {
-  targetTable: string;
-  sourceAttribute: string;
-  targetAttribute: string;
-  joinType: string;
-  isTransitive?: boolean;
-  intermediateJoins?: Join[];
+interface Props {
+  tablesFiltersJoin: TableRelations;
+  sourceTable: string;
+  sourceAttributes: Attribute[];
+  joins: Join[];
+  fetchTargetAttributes: (tableName: string) => Promise<{ name: string; type: string }[]>;
 }
 
-const emit = defineEmits(["update:joins"]);
+interface Emits {
+  (e: 'update:joins', joins: Join[]): void;
+}
 
-const props = defineProps({
-  tablesFiltersJoin: {
-    type: Object as () => { direct: string[], transitive: Record<string, any[]> },
-    default: () => ({ direct: [], transitive: {} }),
-  },
-  sourceTable: {
-    type: String,
-    default: "",
-  },
-  sourceAttributes: {
-    type: Array as () => {
-      name: string;
-      type: string;
-      table?: string;
-      qualified_name?: string;
-    }[],
-    default: () => [],
-  },
-  joins: {
-    type: Array as () => Join[],
-    default: () => [],
-  },
-  fetchTargetAttributes: {
-    type: Function as PropType<
-      (tableName: string) => Promise<{ name: string; type: string }[]>
-    >,
-    required: true,
-  } as any,
+const props = withDefaults(defineProps<Props>(), {
+  tablesFiltersJoin: () => ({ direct: [], transitive: {} }),
+  sourceTable: '',
+  sourceAttributes: () => [],
+  joins: () => []
 });
 
-const joins = ref<Join[]>(props.joins);
+const emit = defineEmits<Emits>();
+
+// Estado local
+const joins = ref<Join[]>([...props.joins]);
 const newJoin = ref<Join>({
   targetTable: "",
   sourceAttribute: "",
@@ -51,213 +35,196 @@ const newJoin = ref<Join>({
   joinType: "INNER JOIN",
 });
 
-// Computed para criar lista de tabelas disponíveis para o select com indicação do tipo
+// Estado para joins transitivos
+const isTransitiveJoin = ref(false);
+const transitiveInfo = ref<any>(null);
+const targetAttributes = ref<Attribute[]>([]);
+const suggestedJoinColumns = ref<{ source: string; target: string }[]>([]);
+
+// Computed para criar lista de tabelas disponíveis para o select
 const availableTables = computed(() => {
-  const direct = props.tablesFiltersJoin.direct || [];
-  const transitive = Object.keys(props.tablesFiltersJoin.transitive || {});
+  const { direct, transitive } = props.tablesFiltersJoin;
   
   const directItems = direct.map(table => ({
     title: `${table} (Relação Direta)`,
     value: table,
-    props: {
-      subtitle: 'Join direto'
-    }
+    props: { subtitle: 'Join direto' }
   }));
   
-  const transitiveItems = transitive.map(table => ({
+  const transitiveItems = Object.keys(transitive).map(table => ({
     title: `${table} (Relação Transitiva)`,
     value: table,
-    props: {
-      subtitle: 'Join através de tabela intermediária'
-    }
+    props: { subtitle: 'Join através de tabela intermediária' }
   }));
   
   return [...directItems, ...transitiveItems];
 });
 
-// Variável para controlar se o join atual é transitivo
-const isTransitiveJoin = ref(false);
-const transitiveInfo = ref<any>(null);
+// Observa mudanças nos joins e emite para o componente pai
+watch(joins, (newValue) => {
+  emit("update:joins", newValue);
+}, { deep: true });
 
-const joinTypes = [
-  { text: "Inner Join", value: "INNER JOIN" },
-  { text: "Left Join", value: "LEFT JOIN" },
-  { text: "Right Join", value: "RIGHT JOIN" },
-  { text: "Full Join", value: "FULL JOIN" },
-];
-
-watch(
-  joins,
-  (newValue) => {
-    emit("update:joins", newValue);
-  },
-  { deep: true }
-);
-
-const addJoin = () => {
-  if (
-    newJoin.value.targetTable &&
-    newJoin.value.sourceAttribute &&
-    newJoin.value.targetAttribute
-  ) {
-    if (isTransitiveJoin.value && transitiveInfo.value) {
-      // Para joins transitivos, adicionar os joins intermediários primeiro
-      const sourceTableForJoin = transitiveInfo.value.source_table || props.sourceTable;
-      
-      // Join da tabela fonte para a intermediária
-      const sourceToIntermediate: Join = {
-        targetTable: transitiveInfo.value.intermediate_table,
-        sourceAttribute: `${sourceTableForJoin}.${transitiveInfo.value.source_to_intermediate.source_column}`,
-        targetAttribute: `${transitiveInfo.value.intermediate_table}.${transitiveInfo.value.source_to_intermediate.target_column}`,
-        joinType: newJoin.value.joinType,
-      };
-      
-      // Join da tabela intermediária para a alvo
-      const intermediateToTarget: Join = {
-        targetTable: newJoin.value.targetTable,
-        sourceAttribute: `${transitiveInfo.value.intermediate_table}.${transitiveInfo.value.intermediate_to_target.source_column}`,
-        targetAttribute: `${newJoin.value.targetTable}.${transitiveInfo.value.intermediate_to_target.target_column}`,
-        joinType: newJoin.value.joinType,
-      };
-      
-      joins.value.push(sourceToIntermediate);
-      joins.value.push(intermediateToTarget);
-    } else {
-      // Join direto
-      joins.value.push({ ...newJoin.value });
-    }
-    
-    // Reset form
-    newJoin.value = {
-      targetTable: "",
-      sourceAttribute: "",
-      targetAttribute: "",
-      joinType: "INNER JOIN",
-    };
-    isTransitiveJoin.value = false;
-    transitiveInfo.value = null;
+/**
+ * Adiciona um novo join
+ */
+const addJoin = (): void => {
+  if (!ValidationUtils.validateJoinConfig(newJoin.value)) {
+    return;
   }
+
+  if (isTransitiveJoin.value && transitiveInfo.value) {
+    addTransitiveJoin();
+  } else {
+    addDirectJoin();
+  }
+  
+  resetJoinForm();
 };
 
-const removeJoin = (index: number) => {
+/**
+ * Adiciona join transitivo (com tabela intermediária)
+ */
+const addTransitiveJoin = (): void => {
+  if (!transitiveInfo.value) return;
+
+  const sourceTableForJoin = transitiveInfo.value.source_table || props.sourceTable;
+  
+  const sourceToIntermediate: Join = {
+    targetTable: transitiveInfo.value.intermediate_table,
+    sourceAttribute: `${sourceTableForJoin}.${transitiveInfo.value.source_to_intermediate.source_column}`,
+    targetAttribute: `${transitiveInfo.value.intermediate_table}.${transitiveInfo.value.source_to_intermediate.target_column}`,
+    joinType: newJoin.value.joinType,
+  };
+  
+  const intermediateToTarget: Join = {
+    targetTable: newJoin.value.targetTable,
+    sourceAttribute: `${transitiveInfo.value.intermediate_table}.${transitiveInfo.value.intermediate_to_target.source_column}`,
+    targetAttribute: `${newJoin.value.targetTable}.${transitiveInfo.value.intermediate_to_target.target_column}`,
+    joinType: newJoin.value.joinType,
+  };
+  
+  joins.value.push(sourceToIntermediate, intermediateToTarget);
+};
+
+/**
+ * Adiciona join direto
+ */
+const addDirectJoin = (): void => {
+  joins.value.push({ ...newJoin.value });
+};
+
+/**
+ * Reset do formulário de join
+ */
+const resetJoinForm = (): void => {
+  newJoin.value = {
+    targetTable: "",
+    sourceAttribute: "",
+    targetAttribute: "",
+    joinType: "INNER JOIN",
+  };
+  isTransitiveJoin.value = false;
+  transitiveInfo.value = null;
+};
+
+/**
+ * Remove um join específico
+ */
+const removeJoin = (index: number): void => {
   joins.value.splice(index, 1);
 };
 
-const targetAttributes = ref<
-  { name: string; type: string; qualified_name?: string }[]
->([]);
-const suggestedJoinColumns = ref<{ source: string; target: string }[]>([]);
-
-watch(
-  () => newJoin.value.targetTable,
-  async (newTable) => {
-    if (newTable) {
-      // Verificar se é uma relação direta considerando também tabelas já joinadas
-      const isDirect = props.tablesFiltersJoin.direct?.includes(newTable);
-      
-      // Verificar se alguma tabela já joinada tem relação direta com a nova tabela
-      const sourceTablesFromJoins = props.joins?.map(join => join.targetTable) || [];
-      
-      let hasDirectRelationFromAnySource = isDirect;
-      
-      // Se não é relação direta da tabela principal, verificar se é de alguma tabela joinada
-      if (!isDirect) {
-        for (const sourceTable of sourceTablesFromJoins) {
-          try {
-            const response = await fetch(
-              `http://localhost:8000/api/db/tables/${sourceTable}/foreign-keys/${newTable}`
-            );
-            if (response.ok) {
-              const data = await response.json();
-              if (data.relations && data.relations.length > 0) {
-                hasDirectRelationFromAnySource = true;
-                break;
-              }
-            }
-          } catch (error) {
-            console.error(`Erro ao verificar relação entre ${sourceTable} e ${newTable}:`, error);
-          }
-        }
+/**
+ * Verifica se uma relação é direta considerando tabelas já joinadas
+ */
+const checkDirectRelation = async (targetTable: string): Promise<boolean> => {
+  const isDirect = props.tablesFiltersJoin.direct?.includes(targetTable);
+  
+  if (isDirect) return true;
+  
+  // Verificar se alguma tabela já joinada tem relação direta
+  const sourceTablesFromJoins = props.joins?.map(join => join.targetTable) || [];
+  
+  for (const sourceTable of sourceTablesFromJoins) {
+    try {
+      const relations = await ApiService.getForeignKeyRelations(sourceTable, targetTable);
+      if (relations.length > 0) {
+        return true;
       }
-      
-      isTransitiveJoin.value = !hasDirectRelationFromAnySource;
-      
-      if (hasDirectRelationFromAnySource) {
-        // Relação direta - buscar atributos normalmente
-        const attrs = await props.fetchTargetAttributes(newTable);
-        targetAttributes.value = attrs.map(
-          (attr: { name: string; type: string }) => ({
-            ...attr,
-            qualified_name: `${newTable}.${attr.name}`,
-          })
-        );
-        await fetchJoinSuggestions(newTable);
-      } else {
-        // Relação transitiva - usar as informações pré-calculadas
-        const transitiveData = props.tablesFiltersJoin.transitive?.[newTable];
-        if (transitiveData && transitiveData.length > 0) {
-          transitiveInfo.value = transitiveData[0]; // Usar a primeira opção de caminho transitivo
-          
-          // Buscar atributos da tabela alvo
-          const attrs = await props.fetchTargetAttributes(newTable);
-          targetAttributes.value = attrs.map(
-            (attr: { name: string; type: string }) => ({
-              ...attr,
-              qualified_name: `${newTable}.${attr.name}`,
-            })
-          );
-          
-          // Para joins transitivos, definir automaticamente os atributos baseados na relação
-          const sourceTable = transitiveInfo.value.source_table || props.sourceTable;
-          newJoin.value.sourceAttribute = `${sourceTable}.${transitiveInfo.value.source_to_intermediate.source_column}`;
-          newJoin.value.targetAttribute = `${newTable}.${transitiveInfo.value.intermediate_to_target.target_column}`;
-        }
-      }
-    } else {
-      targetAttributes.value = [];
-      suggestedJoinColumns.value = [];
-      isTransitiveJoin.value = false;
-      transitiveInfo.value = null;
+    } catch (error) {
+      console.error(`Erro ao verificar relação entre ${sourceTable} e ${targetTable}:`, error);
     }
   }
-);
-
-const fetchJoinSuggestions = async (targetTable: string) => {
-  // Para joins diretos, tentar encontrar a relação FK mais adequada
-  // Considerar não apenas a tabela principal, mas também tabelas já joinadas
   
+  return false;
+};
+
+/**
+ * Busca sugestões de join baseadas em chaves estrangeiras
+ */
+const fetchJoinSuggestions = async (targetTable: string): Promise<void> => {
   const sourceTablesFromJoins = props.joins?.map(join => join.targetTable) || [];
   const allSourceTables = [props.sourceTable, ...sourceTablesFromJoins].filter(Boolean);
   
   for (const sourceTable of allSourceTables) {
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/db/tables/${sourceTable}/foreign-keys/${targetTable}`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        if (data.relations && data.relations.length > 0) {
-          suggestedJoinColumns.value = data.relations.map((rel: any) => ({
-            source: rel.source_column,
-            target: rel.target_column,
-          }));
-          
-          // Se há uma sugestão, aplicar automaticamente
-          if (suggestedJoinColumns.value.length > 0) {
-            const suggestion = suggestedJoinColumns.value[0];
-            // Qualificar o atributo de origem com o nome da tabela
-            newJoin.value.sourceAttribute = `${sourceTable}.${suggestion.source}`;
-            // Qualificar o atributo de destino com o nome da tabela
-            newJoin.value.targetAttribute = `${targetTable}.${suggestion.target}`;
-            break; // Usar a primeira relação encontrada
-          }
-        }
+      const relations = await ApiService.getForeignKeyRelations(sourceTable, targetTable);
+      
+      if (relations.length > 0) {
+        suggestedJoinColumns.value = relations.map(rel => ({
+          source: rel.source_column,
+          target: rel.target_column,
+        }));
+        
+        // Aplicar primeira sugestão automaticamente
+        const suggestion = suggestedJoinColumns.value[0];
+        newJoin.value.sourceAttribute = `${sourceTable}.${suggestion.source}`;
+        newJoin.value.targetAttribute = `${targetTable}.${suggestion.target}`;
+        break;
       }
     } catch (error) {
       console.error(`Erro ao buscar sugestões de join entre ${sourceTable} e ${targetTable}:`, error);
     }
   }
 };
+
+// Observa mudanças na tabela alvo selecionada
+watch(() => newJoin.value.targetTable, async (newTable) => {
+  if (!newTable) {
+    targetAttributes.value = [];
+    suggestedJoinColumns.value = [];
+    isTransitiveJoin.value = false;
+    transitiveInfo.value = null;
+    return;
+  }
+
+  const hasDirectRelation = await checkDirectRelation(newTable);
+  isTransitiveJoin.value = !hasDirectRelation;
+  
+  // Buscar atributos da tabela alvo
+  try {
+    const attrs = await props.fetchTargetAttributes(newTable);
+    targetAttributes.value = AttributeUtils.addTableQualification(attrs, newTable);
+  } catch (error) {
+    console.error(`Erro ao carregar atributos da tabela ${newTable}:`, error);
+    targetAttributes.value = [];
+  }
+  
+  if (hasDirectRelation) {
+    await fetchJoinSuggestions(newTable);
+  } else {
+    // Configurar join transitivo
+    const transitiveData = props.tablesFiltersJoin.transitive?.[newTable];
+    if (transitiveData && transitiveData.length > 0) {
+      transitiveInfo.value = transitiveData[0];
+      
+      const sourceTable = transitiveInfo.value.source_table || props.sourceTable;
+      newJoin.value.sourceAttribute = `${sourceTable}.${transitiveInfo.value.source_to_intermediate.source_column}`;
+      newJoin.value.targetAttribute = `${newTable}.${transitiveInfo.value.intermediate_to_target.target_column}`;
+    }
+  }
+});
 </script>
 
 <template>
@@ -272,7 +239,7 @@ const fetchJoinSuggestions = async (targetTable: string) => {
           <v-col cols="12" sm="6">
             <v-select
               v-model="newJoin.joinType"
-              :items="joinTypes"
+              :items="JOIN_TYPES"
               item-title="text"
               item-value="value"
               label="Tipo de Junção"
@@ -356,12 +323,9 @@ const fetchJoinSuggestions = async (targetTable: string) => {
           color="primary"
           class="mt-2"
           @click="addJoin"
-          :disabled="
-            !newJoin.targetTable ||
-            !newJoin.sourceAttribute ||
-            !newJoin.targetAttribute
-          "
+          :disabled="!ValidationUtils.validateJoinConfig(newJoin)"
         >
+          <v-icon start>mdi-plus</v-icon>
           Adicionar Junção
         </v-btn>
       </v-form>
@@ -373,17 +337,17 @@ const fetchJoinSuggestions = async (targetTable: string) => {
         <v-list density="compact">
           <v-list-item v-for="(join, index) in joins" :key="index">
             <template v-slot:prepend>
-              <v-icon>mdi-link-variant</v-icon>
+              <v-icon color="primary">mdi-link-variant</v-icon>
             </template>
             <v-list-item-title>
-              {{ join.sourceAttribute }} {{ join.joinType }}
-              {{ join.targetAttribute }}
+              {{ FormatUtils.formatJoin(join) }}
             </v-list-item-title>
             <template v-slot:append>
               <v-btn
                 icon="mdi-delete"
                 variant="text"
                 density="compact"
+                color="error"
                 @click="removeJoin(index)"
               ></v-btn>
             </template>
