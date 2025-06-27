@@ -60,6 +60,30 @@ async def get_table_relations(table_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao buscar relações da tabela {table_name}: {str(e)}")
 
+@router.get("/tables/{table_name}/transitive-relations")
+async def get_transitive_relations(table_name: str, used_tables: str = ""):
+    """Retorna as relações diretas e transitivas de uma tabela específica"""
+    try:
+        used_tables_list = [table.strip() for table in used_tables.split(",") if table.strip()] if used_tables else []
+        relations = consulta_dao.getTransitiveRelations(table_name, used_tables_list)
+        return {"relations": relations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar relações transitivas da tabela {table_name}: {str(e)}")
+
+class TransitiveRelationsWithJoinsRequest(BaseModel):
+    baseTable: str
+    joins: List[JoinRequest]
+
+@router.post("/tables/{table_name}/transitive-relations-with-joins")
+async def get_transitive_relations_with_joins(table_name: str, request: TransitiveRelationsWithJoinsRequest):
+    """Retorna as relações diretas e transitivas considerando joins já existentes"""
+    try:
+        joins_dict = [join.model_dump() for join in request.joins]
+        relations = consulta_dao.getTransitiveRelationsWithJoins(request.baseTable, joins_dict)
+        return {"relations": relations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar relações transitivas com joins para {table_name}: {str(e)}")
+
 @router.get("/tables/{table_name}/columns")
 async def get_table_columns(table_name: str):
     """Retorna as colunas de uma tabela específica"""

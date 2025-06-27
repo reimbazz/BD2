@@ -11,7 +11,7 @@ import ReportViewer from "./ReportViewer.vue";
 
 // Estado da aplicação
 const tables = ref<string[]>([]);
-const tablesJoin = ref<string[]>([]);
+const tablesJoin = ref<{ direct: string[], transitive: Record<string, any[]> }>({ direct: [], transitive: {} });
 const selectedTable = ref<string>("");
 const attributes = ref<{ name: string; type: string; table?: string; qualified_name?: string }[]>([]);
 const selectedAttributes = ref<string[]>([]);
@@ -147,12 +147,28 @@ watch(filteredAttributes, (newAvailableAttrs) =>{
 const loadTablesJoin = async () => {
   try {
     isLoading.value = true;
-    // Buscar as tabelas disponíveis para join na API
-    const response = await axios.get(
-      `http://localhost:8000/api/db/tables/${selectedTable.value}/relations`
-    );
-
-    tablesJoin.value = response.data.relations;
+    
+    if (joins.value.length === 0) {
+      // Se não há joins, usar o endpoint simples
+      const usedTables = [selectedTable.value];
+      const usedTablesParam = usedTables.join(',');
+      
+      const response = await axios.get(
+        `http://localhost:8000/api/db/tables/${selectedTable.value}/transitive-relations?used_tables=${usedTablesParam}`
+      );
+      tablesJoin.value = response.data.relations;
+    } else {
+      // Se há joins, usar o endpoint que considera joins existentes
+      const response = await axios.post(
+        `http://localhost:8000/api/db/tables/${selectedTable.value}/transitive-relations-with-joins`,
+        {
+          baseTable: selectedTable.value,
+          joins: joins.value
+        }
+      );
+      tablesJoin.value = response.data.relations;
+    }
+    
     isLoading.value = false;
   } catch (err) {
     console.error("Erro ao carregar tabelas para join:", err);
@@ -184,6 +200,7 @@ watch(selectedTable, async (newTable) => {
 watch(joins, async () => {
   if (selectedTable.value) {
     await loadJoinedTablesAttributes();
+    await loadTablesJoin(); // Recarregar tabelas disponíveis após mudança nos joins
   }
 }, { deep: true });
 

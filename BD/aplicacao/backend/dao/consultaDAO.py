@@ -93,6 +93,67 @@ class ConsultaDAO:
             print(f"Erro ao buscar relações da tabela {table_name}: {e}")
             raise e
 
+    def getTransitiveRelations(self, source_table: str, used_tables: List[str] = None) -> Dict[str, Any]:
+        """
+        Busca relações transitivas a partir de uma tabela fonte
+        
+        Args:
+            source_table: Tabela de origem
+            used_tables: Lista de tabelas já utilizadas nos joins (para filtrar)
+            
+        Returns:
+            Dicionário com relações diretas e transitivas
+        """
+        try:
+            if used_tables is None:
+                used_tables = []
+                
+            insp = inspect(self.engine)
+            all_tables = set(insp.get_table_names(schema='public'))
+            
+            # Tabelas a serem excluídas (já utilizadas + tabela fonte)
+            excluded_tables = set(used_tables + [source_table])
+            
+            # Buscar relações diretas
+            direct_relations = self.getTableRelations(source_table)
+            available_direct = [table for table in direct_relations if table not in excluded_tables]
+            
+            # Buscar relações transitivas (nível 2 - através de uma tabela intermediária)
+            transitive_relations = {}
+            
+            for intermediate_table in direct_relations:
+                if intermediate_table in excluded_tables:
+                    continue
+                    
+                # Buscar relações da tabela intermediária
+                intermediate_relations = self.getTableRelations(intermediate_table)
+                
+                for target_table in intermediate_relations:
+                    if target_table not in excluded_tables and target_table != source_table:
+                        if target_table not in available_direct:  # Apenas se não for relação direta
+                            if target_table not in transitive_relations:
+                                transitive_relations[target_table] = []
+                            
+                            # Buscar informações do join intermediário
+                            source_to_intermediate = self.getForeignKeyRelations(source_table, intermediate_table)
+                            intermediate_to_target = self.getForeignKeyRelations(intermediate_table, target_table)
+                            
+                            if source_to_intermediate and intermediate_to_target:
+                                transitive_relations[target_table].append({
+                                    'source_table': source_table,
+                                    'intermediate_table': intermediate_table,
+                                    'source_to_intermediate': source_to_intermediate[0],
+                                    'intermediate_to_target': intermediate_to_target[0]
+                                })
+            
+            return {
+                'direct': available_direct,
+                'transitive': transitive_relations
+            }
+        except Exception as e:
+            print(f"Erro ao buscar relações transitivas para {source_table}: {e}")
+            raise e
+            
     def getTableColumns(self, table_name: str) -> List[Dict[str, Any]]:
         try:
             insp = inspect(self.engine)
@@ -554,3 +615,74 @@ class ConsultaDAO:
             
             # Se não encontrou em nenhuma tabela, usar a tabela base
             return get_column_from_table(base_table, attr)
+
+    def getTransitiveRelationsWithJoins(self, base_table: str, existing_joins: List[Dict]) -> Dict[str, Any]:
+        """
+        Busca relações transitivas considerando joins já existentes
+        
+        Args:
+            base_table: Tabela base
+            existing_joins: Lista de joins já existentes
+            
+        Returns:
+            Dicionário com relações diretas e transitivas
+        """
+        try:
+            insp = inspect(self.engine)
+            
+            # Obter todas as tabelas envolvidas nos joins existentes
+            involved_tables = {base_table}
+            for join in existing_joins:
+                involved_tables.add(join.get('targetTable'))
+            
+            # Tabelas a serem excluídas (já utilizadas)
+            excluded_tables = set(involved_tables)
+            
+            # Coletar todas as relações diretas das tabelas envolvidas
+            all_direct_relations = set()
+            for table in involved_tables:
+                table_relations = self.getTableRelations(table)
+                all_direct_relations.update(table_relations)
+            
+            # Filtrar relações diretas disponíveis
+            available_direct = [table for table in all_direct_relations if table not in excluded_tables]
+            
+            # Buscar relações transitivas (através de tabelas intermediárias)
+            transitive_relations = {}
+            
+            # Para cada tabela envolvida, buscar relações transitivas
+            for source_table in involved_tables:
+                source_relations = self.getTableRelations(source_table)
+                
+                for intermediate_table in source_relations:
+                    if intermediate_table in excluded_tables:
+                        continue
+                        
+                    # Buscar relações da tabela intermediária
+                    intermediate_relations = self.getTableRelations(intermediate_table)
+                    
+                    for target_table in intermediate_relations:
+                        if target_table not in excluded_tables and target_table not in involved_tables:
+                            if target_table not in available_direct:  # Apenas se não for relação direta
+                                if target_table not in transitive_relations:
+                                    transitive_relations[target_table] = []
+                                
+                                # Buscar informações do join intermediário
+                                source_to_intermediate = self.getForeignKeyRelations(source_table, intermediate_table)
+                                intermediate_to_target = self.getForeignKeyRelations(intermediate_table, target_table)
+                                
+                                if source_to_intermediate and intermediate_to_target:
+                                    transitive_relations[target_table].append({
+                                        'source_table': source_table,
+                                        'intermediate_table': intermediate_table,
+                                        'source_to_intermediate': source_to_intermediate[0],
+                                        'intermediate_to_target': intermediate_to_target[0]
+                                    })
+            
+            return {
+                'direct': available_direct,
+                'transitive': transitive_relations
+            }
+        except Exception as e:
+            print(f"Erro ao buscar relações transitivas com joins para {base_table}: {e}")
+            raise e
