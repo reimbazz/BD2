@@ -76,7 +76,6 @@ BD/
 ### 4. **Sistema de Filtros Avançado**
 - Filtros dinâmicos baseados no tipo de dados da coluna
 - Operadores inteligentes (=, !=, LIKE, IN, BETWEEN, etc.)
-- Lógica booleana (AND/OR) entre múltiplos filtros
 - Validação de entrada em tempo real
 
 ### 5. **Agrupamento e Agregação**
