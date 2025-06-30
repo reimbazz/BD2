@@ -1,49 +1,4 @@
-"""
-Modelos SQLAlchemy para o sis    country_code: Mapped[str] = mapped_column(CHAR(3), primary_key=True, doc="Código ISO de 3 caracteres")
-    name: Mapped[str] = mapped_column(String(100), doc="Nome completo do país")
-
-    # Relacionamentos com documentação clara
-    borders: Mapped[List['Borders']] = relationship(
-        'Borders', foreign_keys='[Borders.border_country_code]', 
-        back_populates='countries',
-        doc="Países que fazem fronteira com este país"
-    )
-    borders_: Mapped[List['Borders']] = relationship(
-        'Borders', foreign_keys='[Borders.country_code]', 
-        back_populates='borders_',
-        doc="Fronteiras que este país possui"
-    )
-    country_geography: Mapped[List['CountryGeography']] = relationship(
-        'CountryGeography', back_populates='countries',
-        doc="Dados geográficos do país"
-    )
-    country_society: Mapped[List['CountrySociety']] = relationship(
-        'CountrySociety', back_populates='countries',
-        doc="Dados sociais e demográficos do país"
-    )
-    currencies: Mapped[List['Currencies']] = relationship(
-        'Currencies', back_populates='countries',
-        doc="Moedas utilizadas no país"
-    )
-    languages: Mapped[List['Languages']] = relationship(
-        'Languages', back_populates='countries',
-        doc="Idiomas falados no país"
-    )
-    states: Mapped[List['States']] = relationship(
-        'States', back_populates='countries',
-        doc="Estados/províncias do país"
-    )nsultas ADHOC.
-
-Este módulo define todas as entidades do banco de dados usando SQLAlchemy ORM.
-O esquema representa dados geográficos e políticos de países, estados e cidades.
-
-Estrutura hierárquica:
-- Countries (países) -> States (estados) -> Cities (cidades)
-- Relações auxiliares: Borders, Languages, Currencies, Geography, Society
-"""
-
 from typing import List, Optional
-
 from sqlalchemy import BigInteger, CHAR, Double, ForeignKeyConstraint, Integer, PrimaryKeyConstraint, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
