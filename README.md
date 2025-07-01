@@ -182,7 +182,6 @@ O usuário escolhe uma tabela principal. O sistema automaticamente:
 ### 3. **Configuração de Relacionamentos**
 Se necessário, o usuário pode adicionar outras tabelas através de joins:
 - O sistema sugere relacionamentos baseados em foreign keys
-- O usuário pode configurar joins customizados
 - Atributos de todas as tabelas joineadas ficam disponíveis
 
 ### 4. **Seleção de Atributos**
