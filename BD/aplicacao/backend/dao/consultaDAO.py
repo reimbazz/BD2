@@ -242,7 +242,7 @@ class ConsultaDAO:
     def generateAdhocReport(self, base_table: str, attributes: List[str], joins: List,
                           group_by_attributes: List[str], aggregate_functions: List,
                           order_by_columns: List, filters: List[Dict[str, Any]] = [],
-                          limit: int = 1000) -> Tuple[List[Dict[str, Any]], str]:
+                          limit: int = 5000) -> Tuple[List[Dict[str, Any]], str]:
         """
         Gera um relatório adhoc baseado nos parâmetros fornecidos usando ORM SQLAlchemy.
         
@@ -288,6 +288,9 @@ class ConsultaDAO:
                 # Armazenar colunas selecionadas e seus nomes para lidar com duplicações
                 select_columns = []
                 column_names_count = {}
+                
+                # Dicionário para mapear aliases de funções de agregação para as colunas
+                aggregate_aliases = {}
                 
                 # Função auxiliar para obter uma coluna de uma tabela específica
                 def get_column_from_table(table_name, column_name):
@@ -383,7 +386,11 @@ class ConsultaDAO:
                             column_obj = get_column_from_table(base_table, attr)
                     
                     # Adicionar a função de agregação com o alias
-                    select_columns.append(agg_func(column_obj).label(alias_name))
+                    agg_column = agg_func(column_obj).label(alias_name)
+                    select_columns.append(agg_column)
+                    
+                    # Salvar o alias para uso posterior no ORDER BY
+                    aggregate_aliases[alias_name] = agg_column
                 
                 # Adicionar colunas ao select
                 query = query.add_columns(*select_columns)
@@ -481,7 +488,7 @@ class ConsultaDAO:
                 if group_by_attributes:
                     group_by_columns = []
                     for attr in group_by_attributes:
-                        column_obj = self._get_column_with_qualifier(attr, base_table, table_aliases, get_column_from_table)
+                        column_obj = self._get_column_with_qualifier(attr, base_table, table_aliases, get_column_from_table, aggregate_aliases)
                         group_by_columns.append(column_obj)
                     
                     query = query.group_by(*group_by_columns)
@@ -502,7 +509,7 @@ class ConsultaDAO:
                         if not attr:
                             continue
                           # Obter a coluna para ordenação
-                        column_obj = self._get_column_with_qualifier(attr, base_table, table_aliases, get_column_from_table)
+                        column_obj = self._get_column_with_qualifier(attr, base_table, table_aliases, get_column_from_table, aggregate_aliases)
                         
                         # Adicionar a direção de ordenação
                         if direction == "DESC":
@@ -590,7 +597,7 @@ class ConsultaDAO:
         else:
             raise ValueError(f"Operador '{operator}' não suportado")
 
-    def _get_column_with_qualifier(self, attr: str, base_table: str, table_aliases: Dict, get_column_from_table) -> Any:
+    def _get_column_with_qualifier(self, attr: str, base_table: str, table_aliases: Dict, get_column_from_table, aggregate_aliases: Dict = None) -> Any:
         """
         Obtém uma coluna com qualificador de tabela (ex: tabela.coluna)
         
@@ -599,10 +606,15 @@ class ConsultaDAO:
             base_table: Nome da tabela base
             table_aliases: Dicionário de aliases de tabelas
             get_column_from_table: Função para obter coluna de uma tabela
+            aggregate_aliases: Dicionário de aliases de funções de agregação
             
         Returns:
             Objeto de coluna SQLAlchemy
         """
+        # Primeiro verificar se é um alias de função de agregação
+        if aggregate_aliases and attr in aggregate_aliases:
+            return aggregate_aliases[attr]
+            
         if "." in attr:
             table_name, col_name = attr.split(".")
             return get_column_from_table(table_name, col_name)
