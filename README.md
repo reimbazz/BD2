@@ -270,17 +270,12 @@ yarn run dev
 - Mensagens de erro claras e acionáveis
 - Tooltips e ajuda contextual
 
-### **Acessibilidade**
-- Suporte a navegação por teclado
-- Contraste adequado para legibilidade
-- Componentes semânticos HTML
-- Compatibilidade com leitores de tela
 
 ## 📈 Benefícios Técnicos
 
 ### **Manutenibilidade**
 - Código modular e bem estruturado
-- Tipagem forte reduz bugs em produção
+- Tipagem forte reduz bugs
 - Padrões de projeto facilitam evolução
 - Documentação abrangente do código
 
@@ -289,12 +284,6 @@ yarn run dev
 - API RESTful facilita integrações
 - Frontend componentizado para reutilização
 - Banco de dados otimizado para consultas complexas
-
-### **Confiabilidade**
-- Tratamento robusto de erros
-- Validações em múltiplas camadas
-- Logs detalhados para debugging
-- Testes automatizados (em desenvolvimento)
 
 
 ---
