@@ -122,7 +122,8 @@ export class FilterUtils {
     return type.includes('int') || 
            type.includes('float') || 
            type.includes('decimal') || 
-           type.includes('numeric');
+           type.includes('numeric') ||
+           type.includes('double precision');
   }
 
   /**
