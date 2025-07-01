@@ -20,7 +20,7 @@
             <v-row justify="center">
               <v-col cols="auto">
                 <v-chip-group
-                  v-model="filter.logic"
+                  :model-value="filter.logic"
                   mandatory
                   @update:model-value="onLogicChange(index, $event)"
                 >

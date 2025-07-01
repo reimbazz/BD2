@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Tuple
-from sqlalchemy import inspect, select, func, and_, desc, asc, extract
+from sqlalchemy import inspect, select, func, and_, or_, desc, asc, extract
 from .database import get_engine, SessionLocal
 import models.models as models_module
 
@@ -460,11 +460,13 @@ class ConsultaDAO:
                 
                 # Adicionar filtros (WHERE)
                 filter_conditions = []
-                for filter_info in filters:
+                for i, filter_info in enumerate(filters):
                     operator = filter_info.get("operator", "=")
                     attr = filter_info["attribute"]
                     value = filter_info["value"]
                     filter_function = filter_info.get("function", None)
+                    logic = filter_info.get("logic", "AND") 
+                    
                     
                     # Obter a coluna para o filtro
                     if "." in attr:
@@ -479,11 +481,29 @@ class ConsultaDAO:
                     
                     # Aplicar o operador usando o método auxiliar
                     filter_condition = self._apply_filter_operator(column_obj, operator, value)
-                    filter_conditions.append(filter_condition)
+                    
+                    # Armazenar a condição com sua lógica
+                    filter_conditions.append({
+                        'condition': filter_condition,
+                        'logic': logic,
+                        'index': i
+                    })
                 
-                # Adicionar as condições de filtro à consulta
+                # Construir a expressão WHERE considerando a lógica AND/OR
                 if filter_conditions:
-                    query = query.where(and_(*filter_conditions))
+                    # Construir expressão sequencialmente baseada na lógica de cada filtro
+                    where_expression = filter_conditions[0]['condition']
+                    
+                    for filter_data in filter_conditions[1:]:
+                        condition = filter_data['condition']
+                        logic = filter_data['logic']
+                        
+                        if logic == "OR":
+                            where_expression = or_(where_expression, condition)
+                        else:  # AND (padrão)
+                            where_expression = and_(where_expression, condition)
+                    
+                    query = query.where(where_expression)
                   # Adicionar GROUP BY
                 if group_by_attributes:
                     group_by_columns = []

@@ -41,6 +41,7 @@ class FilterCondition(BaseModel):
     operator: str = Field(..., description="Operador de comparação")
     value: Any = Field(..., description="Valor para comparação")
     function: Optional[str] = Field(None, description="Função a aplicar no atributo")
+    logic: str = Field(default="AND", description="Lógica do filtro (AND/OR)")
 
 class ReportRequest(BaseModel):
     """Modelo para requisição de relatório ADHOC"""

@@ -30,12 +30,7 @@ export interface OrderByColumn {
   direction: 'ASC' | 'DESC';
 }
 
-export interface Filter {
-  attribute: string;
-  operator: string;
-  value: any;
-  function?: string;
-}
+
 
 export interface ReportRequest {
   baseTable: string;
